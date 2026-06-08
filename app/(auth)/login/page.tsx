@@ -1,0 +1,115 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { TrendingUp, Loader2, AlertCircle } from 'lucide-react'
+
+export default function LoginPage() {
+  const router = useRouter()
+  const supabase = createClient()
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true); setError(''); setMessage('')
+    try {
+      if (mode === 'signin') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        router.push('/dashboard')
+        router.refresh()
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password })
+        if (error) throw error
+        setMessage('Account created! Check your email to confirm, then sign in.')
+        setMode('signin')
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center">
+            <TrendingUp className="text-white" size={22} />
+          </div>
+          <div>
+            <p className="font-bold text-slate-800 leading-tight">PS Global</p>
+            <p className="text-xs text-slate-500">Profitability Dashboard</p>
+          </div>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+          {/* Tabs */}
+          <div className="flex rounded-lg bg-slate-100 p-1 mb-6">
+            {(['signin', 'signup'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setError(''); setMessage('') }}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                  mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {m === 'signin' ? 'Sign In' : 'Create Account'}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+              <input
+                type="email" required autoComplete="email"
+                value={email} onChange={e => setEmail(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="you@company.com"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
+              <input
+                type="password" required autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                value={password} onChange={e => setPassword(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="••••••••"
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <AlertCircle size={14} className="flex-shrink-0" />
+                {error}
+              </div>
+            )}
+            {message && (
+              <div className="text-sm text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                {message}
+              </div>
+            )}
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+            >
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              {mode === 'signin' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+        </div>
+        <p className="text-center text-xs text-slate-400 mt-4">PS Global Consulting · Internal Tool</p>
+      </div>
+    </div>
+  )
+}

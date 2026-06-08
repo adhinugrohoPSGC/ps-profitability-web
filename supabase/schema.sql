@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS project_budget (
   id          BIGSERIAL PRIMARY KEY,
   user_id     UUID NOT NULL DEFAULT auth.uid(),
-  project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   phase       TEXT,
   budgeted_hours  REAL DEFAULT 0,
   budgeted_cost   REAL DEFAULT 0,
@@ -61,8 +61,8 @@ CREATE TABLE IF NOT EXISTS project_budget (
 CREATE TABLE IF NOT EXISTS timesheet_entries (
   id          BIGSERIAL PRIMARY KEY,
   user_id     UUID NOT NULL DEFAULT auth.uid(),
-  project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
-  entry_date  DATE,
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  entry_date  DATE NOT NULL,
   consultant_name TEXT,
   rate_card_id BIGINT REFERENCES rate_card(id) ON DELETE SET NULL,
   task_description TEXT,
@@ -80,8 +80,8 @@ CREATE TABLE IF NOT EXISTS timesheet_entries (
 CREATE TABLE IF NOT EXISTS expense_entries (
   id          BIGSERIAL PRIMARY KEY,
   user_id     UUID NOT NULL DEFAULT auth.uid(),
-  project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
-  expense_date DATE,
+  project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  expense_date DATE NOT NULL,
   category    TEXT,
   description TEXT,
   vendor      TEXT,
@@ -137,3 +137,13 @@ CREATE POLICY own_data ON timesheet_entries FOR ALL TO authenticated USING (auth
 CREATE POLICY own_data ON expense_entries  FOR ALL TO authenticated USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
 CREATE POLICY own_data ON import_log       FOR ALL TO authenticated USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
 CREATE POLICY own_data ON user_settings    FOR ALL TO authenticated USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
+
+-- Indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_project_budget_project_id    ON project_budget(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_budget_user_id       ON project_budget(user_id);
+CREATE INDEX IF NOT EXISTS idx_timesheet_entries_project_id ON timesheet_entries(project_id);
+CREATE INDEX IF NOT EXISTS idx_timesheet_entries_user_id    ON timesheet_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_expense_entries_project_id   ON expense_entries(project_id);
+CREATE INDEX IF NOT EXISTS idx_expense_entries_user_id      ON expense_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_user_id             ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_rate_card_user_id            ON rate_card(user_id);

@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PS Profitability Dashboard
 
-## Getting Started
+Next.js 15 + Supabase web app for PS Global Consulting project profitability tracking.
 
-First, run the development server:
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Database + Auth**: Supabase (PostgreSQL + Row Level Security)
+- **Styling**: Tailwind CSS v4
+- **Charts**: Recharts
+- **Excel**: ExcelJS + SheetJS (xlsx)
+- **Icons**: Lucide React
+
+## Local Development
+
+### 1. Prerequisites
+
+- Node.js 18+
+- A Supabase project (free tier works)
+
+### 2. Set up the database
+
+1. Go to [supabase.com](https://supabase.com) → your project → SQL Editor
+2. Paste and run the contents of `supabase/schema.sql`
+3. Verify 8 tables were created with RLS enabled
+
+### 3. Configure environment
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Fill in `.env.local` with your values from Supabase → Project Settings → API:
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Install and run
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000) — redirects to `/login`.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy to Vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Push this repo to GitHub
+2. Go to [vercel.com/new](https://vercel.com/new) → import your GitHub repo
+3. Framework: **Next.js** (auto-detected)
+4. Add environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+5. Click **Deploy**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### After deploying
 
-## Deploy on Vercel
+Configure Supabase Auth redirect URLs:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Supabase Dashboard → Authentication → URL Configuration
+2. **Site URL**: `https://your-project.vercel.app`
+3. **Redirect URLs**: add `https://your-project.vercel.app/**`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## First Login
+
+1. Visit `/login` → **Create Account**
+2. Check your email for the confirmation link (or disable email confirmation in Supabase → Auth → Settings for internal tools)
+3. After confirming, sign in
+
+## Application Screens
+
+| Screen | Route | Description |
+|--------|-------|-------------|
+| Dashboard | `/dashboard` | KPI cards, cost breakdown, consultant chart, budget vs actual |
+| Upload Templates | `/upload` | Import timesheet, expense, and project info XLS files |
+| Projects | `/projects` | Create and manage projects |
+| Rate Card | `/rate-card` | Manage consultant cost/bill rates |
+| Reports | `/reports` | Generate Excel profitability report |
+| Settings | `/settings` | Company settings, FX rates, overhead config, data export |
+
+## Data Model Notes
+
+- **Project IDs**: Auto-generated UUIDs (PostgreSQL `gen_random_uuid()`). Users don't enter IDs.
+- **Rate Card active field**: Stored as PostgreSQL `BOOLEAN` (not 0/1).
+- **User isolation**: All tables use Row Level Security — each user sees only their own data.
+- **File operations**: Upload uses browser `FileReader`; Report download uses `URL.createObjectURL`.
+
+## Migrated from
+
+Converted from Electron + SQLite desktop app. All `window.api.invoke()` IPC calls replaced with Supabase client queries.

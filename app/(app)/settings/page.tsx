@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Building2, DollarSign, Gauge, Database, ChevronDown, ChevronUp, Check, AlertTriangle, LogOut } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { Building2, DollarSign, Gauge, Database, ChevronDown, ChevronUp, Check, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+
+// Fixed user ID used for all settings storage (no auth required)
+const ANON_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Settings {
@@ -61,7 +63,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const router = useRouter()
   const [settings, setSettings] = useState<Settings>({
     company_name: 'PS Global Consulting',
     primary_color: '#0d9488',
@@ -92,11 +93,8 @@ export default function SettingsPage() {
   const saveSetting = useCallback((key: string, value: string) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(async () => {
-      const sb = createClient()
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) return
-      await sb.from('user_settings').upsert(
-        { user_id: user.id, key, value },
+      await createClient().from('user_settings').upsert(
+        { user_id: ANON_USER_ID, key, value },
         { onConflict: 'user_id,key' }
       )
       setSaved(key)
@@ -167,12 +165,6 @@ export default function SettingsPage() {
     setDeleteConfirm('')
     setClearError('')
     alert('All project data has been cleared.')
-  }
-
-  async function handleLogout() {
-    await createClient().auth.signOut()
-    router.push('/login')
-    router.refresh()
   }
 
   const SavedBadge = ({ k }: { k: string }) =>
@@ -328,22 +320,6 @@ export default function SettingsPage() {
               Clear Data
             </button>
           </div>
-        </div>
-      </Section>
-
-      {/* ── Account ──────────────────────────────────────────────────────────── */}
-      <Section icon={LogOut} title="Account">
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <p className="text-sm text-slate-700">Sign Out</p>
-            <p className="text-xs text-slate-400">Sign out of your PS Global account</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-3 py-1.5 text-sm border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium transition-colors"
-          >
-            Sign Out
-          </button>
         </div>
       </Section>
 

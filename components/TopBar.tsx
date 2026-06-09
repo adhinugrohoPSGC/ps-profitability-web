@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { LogOut, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
 const TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -16,26 +16,13 @@ const TITLES: Record<string, string> = {
 
 export default function TopBar() {
   const pathname = usePathname()
-  const router = useRouter()
   const { selectedProject, setSelectedProject } = useProject()
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
-  const [userEmail, setUserEmail] = useState('')
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserEmail(user.email ?? '')
-    })
-    supabase.from('projects').select('id, name').order('created_at', { ascending: false })
+    createClient().from('projects').select('id, name').order('created_at', { ascending: false })
       .then(({ data }) => setProjects(data ?? []))
   }, [])
-
-  async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
-  }
 
   const showProjectSelector = ['/dashboard', '/upload', '/reports'].includes(pathname)
 
@@ -61,14 +48,6 @@ export default function TopBar() {
             </div>
           </div>
         )}
-        <span className="text-xs text-slate-400 hidden md:block">{userEmail}</span>
-        <button
-          onClick={handleLogout}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          title="Sign out"
-        >
-          <LogOut size={16} />
-        </button>
       </div>
     </header>
   )

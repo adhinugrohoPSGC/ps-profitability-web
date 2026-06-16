@@ -12,9 +12,7 @@ interface RateCardRow {
   email: string | null
   role: string | null
   cost_rate_sgd: number
-  cost_rate_idr: number
   bill_rate_sgd: number
-  bill_rate_idr: number
   effective_from: string | null
   effective_to: string | null
   active: boolean
@@ -22,15 +20,12 @@ interface RateCardRow {
 
 type FormState = Omit<RateCardRow, 'id'>
 
-// XLS template column headers (must match import parser below)
 const TEMPLATE_HEADERS = [
   'Consultant Name',
   'Email',
   'Role',
   'Cost Rate (SGD/hr)',
-  'Cost Rate (IDR/hr)',
   'Bill Rate (SGD/hr)',
-  'Bill Rate (IDR/hr)',
   'Effective From',
   'Effective To',
   'Active (TRUE/FALSE)',
@@ -39,7 +34,7 @@ const TEMPLATE_HEADERS = [
 function defaultForm(): FormState {
   return {
     consultant_name: '', email: null, role: 'Consultant',
-    cost_rate_sgd: 0, cost_rate_idr: 0, bill_rate_sgd: 0, bill_rate_idr: 0,
+    cost_rate_sgd: 0, bill_rate_sgd: 0,
     effective_from: null, effective_to: null, active: true,
   }
 }
@@ -57,7 +52,6 @@ function parseDate(v: unknown): string | null {
   if (!v) return null
   const s = String(v).trim()
   if (!s) return null
-  // Excel serial number
   if (/^\d+$/.test(s)) {
     const d = XLSX.SSF.parse_date_code(Number(s))
     if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
@@ -104,7 +98,16 @@ export default function RateCardPage() {
 
   function openAdd() { setForm(defaultForm()); setEditingId(null); setShowModal(true) }
   function openEdit(row: RateCardRow) {
-    setForm({ ...row })
+    setForm({
+      consultant_name: row.consultant_name,
+      email: row.email,
+      role: row.role,
+      cost_rate_sgd: row.cost_rate_sgd,
+      bill_rate_sgd: row.bill_rate_sgd,
+      effective_from: row.effective_from,
+      effective_to: row.effective_to,
+      active: row.active,
+    })
     setEditingId(row.id)
     setShowModal(true)
   }
@@ -114,7 +117,18 @@ export default function RateCardPage() {
     setSaving(true)
     try {
       const supabase = createClient()
-      const entry = { ...form, consultant_name: form.consultant_name.trim() }
+      const entry = {
+        consultant_name: form.consultant_name.trim(),
+        email: form.email,
+        role: form.role,
+        cost_rate_sgd: form.cost_rate_sgd,
+        cost_rate_idr: 0,
+        bill_rate_sgd: form.bill_rate_sgd,
+        bill_rate_idr: 0,
+        effective_from: form.effective_from,
+        effective_to: form.effective_to,
+        active: form.active,
+      }
       if (editingId !== null) {
         const { error } = await supabase.from('rate_card').update(entry).eq('id', editingId)
         if (error) throw error
@@ -175,9 +189,7 @@ export default function RateCardPage() {
             email: String(r['Email'] ?? '').trim() || null,
             role: String(r['Role'] ?? 'Consultant').trim() || 'Consultant',
             cost_rate_sgd: parseFloat(String(r['Cost Rate (SGD/hr)'] ?? '0')) || 0,
-            cost_rate_idr: parseFloat(String(r['Cost Rate (IDR/hr)'] ?? '0')) || 0,
             bill_rate_sgd: parseFloat(String(r['Bill Rate (SGD/hr)'] ?? '0')) || 0,
-            bill_rate_idr: parseFloat(String(r['Bill Rate (IDR/hr)'] ?? '0')) || 0,
             effective_from: parseDate(r['Effective From']),
             effective_to: parseDate(r['Effective To']),
             active: parseActiveFlag(r['Active (TRUE/FALSE)']),
@@ -201,9 +213,14 @@ export default function RateCardPage() {
     if (importPreview.length === 0) return
     setImporting(true)
     try {
-      const { error } = await createClient()
-        .from('rate_card')
-        .upsert(importPreview, { onConflict: 'consultant_name,effective_from' })
+      const supabase = createClient()
+      // Insert with idr fields defaulted to 0 (kept in DB schema but not used in UI)
+      const entries = importPreview.map(r => ({
+        ...r,
+        cost_rate_idr: 0,
+        bill_rate_idr: 0,
+      }))
+      const { error } = await supabase.from('rate_card').insert(entries)
       if (error) throw error
       toast(`Successfully imported ${importPreview.length} consultant${importPreview.length !== 1 ? 's' : ''}`, 'success')
       setShowImportModal(false)
@@ -217,13 +234,11 @@ export default function RateCardPage() {
   }
 
   function handleExportTemplate() {
-    const example = [
-      'Alice Tan', 'alice@example.com', 'Senior Consultant', 150, 1750000, 250, 2900000, '2025-01-01', '', 'TRUE',
-    ]
+    const example = ['Alice Tan', 'alice@example.com', 'Senior Consultant', 150, 250, '2025-01-01', '', 'TRUE']
     const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, example])
     ws['!cols'] = [
       { wch: 22 }, { wch: 28 }, { wch: 20 },
-      { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 },
+      { wch: 20 }, { wch: 20 },
       { wch: 14 }, { wch: 14 }, { wch: 18 },
     ]
     const wb = XLSX.utils.book_new()
@@ -290,8 +305,8 @@ export default function RateCardPage() {
               <tr className="text-xs text-slate-500 uppercase tracking-wide">
                 <th className="text-left px-4 py-3">Consultant</th>
                 <th className="text-left px-4 py-3">Role</th>
-                <th className="text-right px-4 py-3">Cost Rate SGD</th>
-                <th className="text-right px-4 py-3">Bill Rate SGD</th>
+                <th className="text-right px-4 py-3">Cost Rate (SGD/hr)</th>
+                <th className="text-right px-4 py-3">Bill Rate (SGD/hr)</th>
                 <th className="text-left px-4 py-3">Effective From</th>
                 <th className="text-center px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
@@ -345,11 +360,11 @@ export default function RateCardPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Cost Rate SGD/hr</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Cost Rate (SGD/hr)</label>
               <input value={form.cost_rate_sgd} onChange={f('cost_rate_sgd')} type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Bill Rate SGD/hr</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Bill Rate (SGD/hr)</label>
               <input value={form.bill_rate_sgd} onChange={f('bill_rate_sgd')} type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             </div>
             <div>
@@ -388,8 +403,7 @@ export default function RateCardPage() {
       {/* Bulk Import Preview Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[80vh]">
-            {/* Modal header */}
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl flex flex-col max-h-[80vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <FileSpreadsheet size={18} className="text-teal-600" />
@@ -401,7 +415,6 @@ export default function RateCardPage() {
               <button onClick={() => { setShowImportModal(false); setImportPreview([]) }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
             </div>
 
-            {/* Preview table */}
             <div className="overflow-auto flex-1">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 sticky top-0">
@@ -409,10 +422,8 @@ export default function RateCardPage() {
                     <th className="text-left px-3 py-2 font-medium">#</th>
                     <th className="text-left px-3 py-2 font-medium">Consultant</th>
                     <th className="text-left px-3 py-2 font-medium">Role</th>
-                    <th className="text-right px-3 py-2 font-medium">Cost SGD</th>
-                    <th className="text-right px-3 py-2 font-medium">Cost IDR</th>
-                    <th className="text-right px-3 py-2 font-medium">Bill SGD</th>
-                    <th className="text-right px-3 py-2 font-medium">Bill IDR</th>
+                    <th className="text-right px-3 py-2 font-medium">Cost (SGD/hr)</th>
+                    <th className="text-right px-3 py-2 font-medium">Bill (SGD/hr)</th>
                     <th className="text-left px-3 py-2 font-medium">Eff. From</th>
                     <th className="text-left px-3 py-2 font-medium">Eff. To</th>
                     <th className="text-center px-3 py-2 font-medium">Active</th>
@@ -428,9 +439,7 @@ export default function RateCardPage() {
                       </td>
                       <td className="px-3 py-2 text-slate-600">{r.role ?? '—'}</td>
                       <td className="px-3 py-2 text-right font-mono text-slate-700">{fmt(r.cost_rate_sgd)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-500">{r.cost_rate_idr > 0 ? fmt(r.cost_rate_idr) : '—'}</td>
                       <td className="px-3 py-2 text-right font-mono text-slate-700">{fmt(r.bill_rate_sgd)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-500">{r.bill_rate_idr > 0 ? fmt(r.bill_rate_idr) : '—'}</td>
                       <td className="px-3 py-2 text-slate-500">{r.effective_from ?? '—'}</td>
                       <td className="px-3 py-2 text-slate-500">{r.effective_to ?? '—'}</td>
                       <td className="px-3 py-2 text-center">
@@ -444,9 +453,8 @@ export default function RateCardPage() {
               </table>
             </div>
 
-            {/* Modal footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 flex-shrink-0 bg-slate-50">
-              <p className="text-xs text-slate-500">Existing rows with the same name + effective date will be updated.</p>
+              <p className="text-xs text-slate-500">All rows will be added as new entries.</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => { setShowImportModal(false); setImportPreview([]) }}

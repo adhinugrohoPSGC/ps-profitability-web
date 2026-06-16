@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { Plus, Edit2, Trash2, Upload, Download, Search, Check, X, Users } from 'lucide-react'
+import { Plus, Edit2, Trash2, Upload, Download, Search, Check, X, Users, FileSpreadsheet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
@@ -22,6 +22,20 @@ interface RateCardRow {
 
 type FormState = Omit<RateCardRow, 'id'>
 
+// XLS template column headers (must match import parser below)
+const TEMPLATE_HEADERS = [
+  'Consultant Name',
+  'Email',
+  'Role',
+  'Cost Rate (SGD/hr)',
+  'Cost Rate (IDR/hr)',
+  'Bill Rate (SGD/hr)',
+  'Bill Rate (IDR/hr)',
+  'Effective From',
+  'Effective To',
+  'Active (TRUE/FALSE)',
+]
+
 function defaultForm(): FormState {
   return {
     consultant_name: '', email: null, role: 'Consultant',
@@ -31,6 +45,25 @@ function defaultForm(): FormState {
 }
 
 const fmt = (v: number) => new Intl.NumberFormat('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
+
+function parseActiveFlag(v: unknown): boolean {
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'number') return v !== 0
+  const s = String(v ?? '').trim().toLowerCase()
+  return s === '' || s === 'true' || s === 'yes' || s === '1'
+}
+
+function parseDate(v: unknown): string | null {
+  if (!v) return null
+  const s = String(v).trim()
+  if (!s) return null
+  // Excel serial number
+  if (/^\d+$/.test(s)) {
+    const d = XLSX.SSF.parse_date_code(Number(s))
+    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+  }
+  return s
+}
 
 export default function RateCardPage() {
   const { toast } = useToast()
@@ -43,6 +76,9 @@ export default function RateCardPage() {
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [importPreview, setImportPreview] = useState<FormState[]>([])
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importing, setImporting] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
 
   const fetchRows = useCallback(async () => {
@@ -119,45 +155,86 @@ export default function RateCardPage() {
     } catch { toast('Failed to update status', 'error') }
   }
 
-  async function handleBulkImport(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
-    const buffer = await file.arrayBuffer()
-    const wb = XLSX.read(buffer, { type: 'array' })
-    const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]])
-    const mapped = jsonRows
-      .filter(r => r['Consultant Name'])
-      .map(r => ({
-        consultant_name: String(r['Consultant Name'] ?? '').trim(),
-        email: String(r['Email'] ?? '').trim() || null,
-        role: String(r['Role'] ?? 'Consultant').trim(),
-        cost_rate_sgd: parseFloat(String(r['Cost Rate SGD/hr'] ?? r['Cost Rate USD/hr'] ?? '0')) || 0,
-        cost_rate_idr: 0,
-        bill_rate_sgd: parseFloat(String(r['Bill Rate SGD/hr'] ?? r['Bill Rate USD/hr'] ?? '0')) || 0,
-        bill_rate_idr: 0,
-        effective_from: r['Effective From'] ? String(r['Effective From']).trim() : null,
-        effective_to: null,
-        active: true,
-      }))
-    if (mapped.length === 0) { toast('No valid rows found in file', 'warning'); return }
-    const { error } = await createClient().from('rate_card').upsert(mapped, { onConflict: 'consultant_name,effective_from' })
-    if (error) { toast(`Import failed: ${error.message}`, 'error'); return }
-    toast(`Imported ${mapped.length} consultants`, 'success')
-    await fetchRows()
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const buffer = ev.target?.result as ArrayBuffer
+        const wb = XLSX.read(buffer, { type: 'array', cellDates: false })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+
+        const mapped: FormState[] = jsonRows
+          .filter(r => String(r['Consultant Name'] ?? '').trim())
+          .map(r => ({
+            consultant_name: String(r['Consultant Name']).trim(),
+            email: String(r['Email'] ?? '').trim() || null,
+            role: String(r['Role'] ?? 'Consultant').trim() || 'Consultant',
+            cost_rate_sgd: parseFloat(String(r['Cost Rate (SGD/hr)'] ?? '0')) || 0,
+            cost_rate_idr: parseFloat(String(r['Cost Rate (IDR/hr)'] ?? '0')) || 0,
+            bill_rate_sgd: parseFloat(String(r['Bill Rate (SGD/hr)'] ?? '0')) || 0,
+            bill_rate_idr: parseFloat(String(r['Bill Rate (IDR/hr)'] ?? '0')) || 0,
+            effective_from: parseDate(r['Effective From']),
+            effective_to: parseDate(r['Effective To']),
+            active: parseActiveFlag(r['Active (TRUE/FALSE)']),
+          }))
+
+        if (mapped.length === 0) {
+          toast('No valid rows found. Make sure you are using the correct template.', 'error')
+          return
+        }
+
+        setImportPreview(mapped)
+        setShowImportModal(true)
+      } catch {
+        toast('Failed to read file. Please use the downloaded template.', 'error')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  async function confirmImport() {
+    if (importPreview.length === 0) return
+    setImporting(true)
+    try {
+      const { error } = await createClient()
+        .from('rate_card')
+        .upsert(importPreview, { onConflict: 'consultant_name,effective_from' })
+      if (error) throw error
+      toast(`Successfully imported ${importPreview.length} consultant${importPreview.length !== 1 ? 's' : ''}`, 'success')
+      setShowImportModal(false)
+      setImportPreview([])
+      await fetchRows()
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Import failed', 'error')
+    } finally {
+      setImporting(false)
+    }
   }
 
   function handleExportTemplate() {
-    const headers = ['Consultant Name', 'Email', 'Role', 'Cost Rate SGD/hr', 'Bill Rate SGD/hr', 'Effective From']
-    const example = [['Alice Tan', 'alice@example.com', 'Senior Consultant', 150, 250, '2025-01-01']]
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...example])
-    ws['!cols'] = [{ wch: 22 }, { wch: 25 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 14 }]
+    const example = [
+      'Alice Tan', 'alice@example.com', 'Senior Consultant', 150, 1750000, 250, 2900000, '2025-01-01', '', 'TRUE',
+    ]
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, example])
+    ws['!cols'] = [
+      { wch: 22 }, { wch: 28 }, { wch: 20 },
+      { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 },
+      { wch: 14 }, { wch: 14 }, { wch: 18 },
+    ]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Rate Card')
     const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'rate-card-template.xlsx'; a.click()
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'rate-card-template.xlsx'
+    a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -191,7 +268,7 @@ export default function RateCardPage() {
           <button onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">
             <Upload size={14} /> Bulk Import
           </button>
-          <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkImport} />
+          <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileSelect} />
           <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">
             <Plus size={14} /> Add Consultant
           </button>
@@ -307,6 +384,88 @@ export default function RateCardPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Bulk Import Preview Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[80vh]">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <FileSpreadsheet size={18} className="text-teal-600" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">Import Preview</h2>
+                  <p className="text-xs text-slate-400">{importPreview.length} row{importPreview.length !== 1 ? 's' : ''} ready to import — review before confirming</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowImportModal(false); setImportPreview([]) }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+            </div>
+
+            {/* Preview table */}
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 sticky top-0">
+                  <tr className="text-slate-500 uppercase tracking-wide border-b border-slate-200">
+                    <th className="text-left px-3 py-2 font-medium">#</th>
+                    <th className="text-left px-3 py-2 font-medium">Consultant</th>
+                    <th className="text-left px-3 py-2 font-medium">Role</th>
+                    <th className="text-right px-3 py-2 font-medium">Cost SGD</th>
+                    <th className="text-right px-3 py-2 font-medium">Cost IDR</th>
+                    <th className="text-right px-3 py-2 font-medium">Bill SGD</th>
+                    <th className="text-right px-3 py-2 font-medium">Bill IDR</th>
+                    <th className="text-left px-3 py-2 font-medium">Eff. From</th>
+                    <th className="text-left px-3 py-2 font-medium">Eff. To</th>
+                    <th className="text-center px-3 py-2 font-medium">Active</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.map((r, i) => (
+                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-800">{r.consultant_name}</p>
+                        {r.email && <p className="text-slate-400">{r.email}</p>}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{r.role ?? '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-700">{fmt(r.cost_rate_sgd)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{r.cost_rate_idr > 0 ? fmt(r.cost_rate_idr) : '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-700">{fmt(r.bill_rate_sgd)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{r.bill_rate_idr > 0 ? fmt(r.bill_rate_idr) : '—'}</td>
+                      <td className="px-3 py-2 text-slate-500">{r.effective_from ?? '—'}</td>
+                      <td className="px-3 py-2 text-slate-500">{r.effective_to ?? '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-medium ${r.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {r.active ? <><Check size={9} /> Yes</> : <><X size={9} /> No</>}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 flex-shrink-0 bg-slate-50">
+              <p className="text-xs text-slate-500">Existing rows with the same name + effective date will be updated.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowImportModal(false); setImportPreview([]) }}
+                  className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmImport}
+                  disabled={importing}
+                  className="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-medium"
+                >
+                  {importing ? 'Importing…' : `Import ${importPreview.length} Consultant${importPreview.length !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

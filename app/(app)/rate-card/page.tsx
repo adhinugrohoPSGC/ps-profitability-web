@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
 
+const ANON_USER_ID = '00000000-0000-0000-0000-000000000001'
+
 interface RateCardRow {
   id: number
   consultant_name: string
@@ -118,6 +120,7 @@ export default function RateCardPage() {
     try {
       const supabase = createClient()
       const entry = {
+        user_id: ANON_USER_ID,
         consultant_name: form.consultant_name.trim(),
         email: form.email,
         role: form.role,
@@ -216,6 +219,7 @@ export default function RateCardPage() {
       const supabase = createClient()
       // Insert with idr fields defaulted to 0 (kept in DB schema but not used in UI)
       const entries = importPreview.map(r => ({
+        user_id: ANON_USER_ID,
         ...r,
         cost_rate_idr: 0,
         bill_rate_idr: 0,

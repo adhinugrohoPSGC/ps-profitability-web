@@ -21,6 +21,7 @@ interface Project {
   overhead_rate_pct: number
   status: string
   notes: string | null
+  external_id: string | null
   created_at: string
 }
 
@@ -32,7 +33,7 @@ function defaultForm(): ProjectForm {
     start_date: '', end_date: '', contract_value: 0,
     contract_currency: 'SGD', billing_type: 'Fixed Fee',
     phases: 'Discovery,Design,Build,Testing,Go-Live',
-    overhead_rate_pct: 12, status: 'active', notes: '',
+    overhead_rate_pct: 12, status: 'active', notes: '', external_id: null,
   }
 }
 
@@ -85,7 +86,7 @@ export default function ProjectsPage() {
       start_date: p.start_date ?? '', end_date: p.end_date ?? '',
       contract_value: p.contract_value, contract_currency: p.contract_currency,
       billing_type: p.billing_type, phases: p.phases, overhead_rate_pct: p.overhead_rate_pct,
-      status: p.status, notes: p.notes ?? '',
+      status: p.status, notes: p.notes ?? '', external_id: p.external_id ?? null,
     })
     setEditingId(p.id)
     setShowModal(true)
@@ -104,6 +105,7 @@ export default function ProjectsPage() {
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         notes: form.notes || null,
+        external_id: form.external_id || null,
       }
       if (editingId) {
         const { error } = await supabase.from('projects').update(payload).eq('id', editingId)
@@ -275,6 +277,10 @@ export default function ProjectsPage() {
             <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} className={inputCls}>
               {['active', 'on-hold', 'completed', 'archived'].map(s => <option key={s}>{s}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">External Project ID <span className="text-slate-400 font-normal">(e.g. ClickUp ID for timesheet matching)</span></label>
+            <input value={form.external_id ?? ''} onChange={e => setForm(p => ({ ...p, external_id: e.target.value }))} placeholder="e.g. 90168316816" className={inputCls} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>

@@ -175,6 +175,8 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
   const [saveLoading, setSaveLoading] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [fxRate, setFxRate] = useState(15000)
+  // maps external project ID (e.g. ClickUp ID) → internal UUID
+  const [projectIdMap, setProjectIdMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const sb = createClient()
@@ -241,6 +243,14 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
         }))
         setAliases(al)
       }
+      // Build external project ID → internal UUID map
+      const { data: projectData } = await sb.from('projects').select('id, external_id').not('external_id', 'is', null)
+      const pMap: Record<string, string> = {}
+      for (const p of (projectData ?? []) as { id: string; external_id: string }[]) {
+        if (p.external_id) pMap[String(p.external_id)] = p.id
+      }
+      setProjectIdMap(pMap)
+
       const resolved = resolveRows(parsed, rc, al)
       setRows(resolved)
       setWarnings(w)
@@ -281,10 +291,15 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
         const hours = row.hours
         const costRate = rc?.cost_rate_sgd ?? 0
         const billRate = rc?.bill_rate_sgd ?? 0
+        // Resolve external project ID to internal UUID, fall back to selected project
+        const resolvedProjectId =
+          (row.external_project_id && projectIdMap[row.external_project_id]) ||
+          selectedProject
         return {
-          project_id: row.project_id || selectedProject,
+          project_id: resolvedProjectId,
           entry_date: row.entry_date,
           consultant_name: row.consultant_name,
+          user_external_id: row.user_external_id || null,
           rate_card_id: rcId ?? null,
           task_description: row.task_description,
           phase: row.phase,
@@ -378,7 +393,7 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase tracking-wide">
                 <tr>
-                  {['Date', 'Consultant', 'Phase', 'Task', 'Hrs', 'Status', 'Resolve'].map(h => (
+                  {['Date', 'User ID', 'Consultant', 'Project', 'Hrs', 'Status', 'Resolve'].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -387,14 +402,22 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
                 {displayRows.map((row, i) => {
                   const needsResolve = row._matchStatus === 'needs_review' || row._matchStatus === 'unmatched'
                   const effectiveId = getEffectiveRateCardId(row, i)
+                  const resolvedProjId = (row.external_project_id && projectIdMap[row.external_project_id]) || selectedProject
+                  const projectResolved = row.external_project_id ? !!projectIdMap[row.external_project_id] : !!selectedProject
                   return (
                     <tr key={i} className={`${row._warnings.length > 0 ? 'bg-amber-50/30' : ''}`}>
                       <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.entry_date || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-slate-500 whitespace-nowrap">{row.user_external_id || '—'}</td>
                       <td className="px-3 py-2 font-medium text-slate-800 max-w-[120px] truncate" title={row.consultant_name}>
                         {row.consultant_name || <span className="text-red-400 italic">missing</span>}
                       </td>
-                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{row.phase || '—'}</td>
-                      <td className="px-3 py-2 text-slate-500 max-w-[160px] truncate" title={row.task_description}>{row.task_description || '—'}</td>
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap font-mono text-xs">
+                        {row.external_project_id ? (
+                          <span className={projectResolved ? 'text-green-600' : 'text-amber-600'} title={resolvedProjId ?? undefined}>
+                            {row.external_project_id}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono text-slate-700">{row.hours}</td>
                       <td className="px-3 py-2">
                         <StatusBadge status={effectiveId ? (row._matchStatus === 'unmatched' ? 'needs_review' : row._matchStatus) : 'unmatched'} />

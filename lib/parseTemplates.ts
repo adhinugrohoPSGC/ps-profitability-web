@@ -26,8 +26,10 @@ function toDate(v: unknown): string {
 export interface TimesheetRow {
   entry_date: string
   consultant_name: string
+  user_external_id: string   // User ID column from template
   task_description: string
-  project_id: string
+  project_id: string         // resolved internal UUID (or raw external ID if unresolved)
+  external_project_id: string // raw Project ID from template (e.g. ClickUp ID)
   phase: string
   hours: number
   _warnings: string[]
@@ -72,25 +74,38 @@ export function parseTimesheetXLS(buffer: ArrayBuffer, defaultProjectId?: string
   const ws = wb.Sheets[sheetName]
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
 
+  const today = new Date().toISOString().split('T')[0]
   const rows: TimesheetRow[] = []
   const globalWarnings: string[] = []
 
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i]
     const rowWarnings: string[] = []
-    const hours = toNum(findCol(r, ['Hours', 'hours', 'Hrs', 'hrs', 'Time']))
-    if (hours <= 0) { globalWarnings.push(`Row ${i + 2}: Hours is 0 or negative — skipped`); continue }
 
-    const name = toStr(findCol(r, ['Consultant Name', 'Consultant', 'Name', 'Resource', 'Employee']))
-    const date = toDate(findCol(r, ['Date', 'date', 'Entry Date', 'Work Date']))
-    const projectId = toStr(findCol(r, ['Project ID', 'project_id', 'Project', 'ProjectID'])) || defaultProjectId || ''
+    const hours = toNum(findCol(r, ['Hours', 'hours', 'Hrs', 'hrs', 'Time']))
+    if (hours <= 0) { globalWarnings.push(`Row ${i + 2}: Hours is 0 or empty — skipped`); continue }
+
+    // Support both old format (Consultant Name) and new format (User Name)
+    const name = toStr(findCol(r, ['User Name', 'Consultant Name', 'Consultant', 'Name', 'Resource', 'Employee']))
+    const userId = toStr(findCol(r, ['User ID', 'UserID', 'user_id']))
+    const externalProjectId = toStr(findCol(r, ['Project ID', 'ProjectID', 'project_id', 'Project']))
+    const date = toDate(findCol(r, ['Date', 'date', 'Entry Date', 'Work Date'])) || today
     const phase = toStr(findCol(r, ['Phase', 'phase', 'Stage', 'Category', 'Activity']))
     const task = toStr(findCol(r, ['Task', 'Task / Description', 'Description', 'Task Description', 'Activity']))
 
     if (!name) rowWarnings.push('Missing consultant name')
-    if (!date) rowWarnings.push('Missing date')
 
-    rows.push({ entry_date: date, consultant_name: name, task_description: task, project_id: projectId, phase, hours, _warnings: rowWarnings })
+    rows.push({
+      entry_date: date,
+      consultant_name: name,
+      user_external_id: userId,
+      task_description: task,
+      project_id: externalProjectId || defaultProjectId || '',
+      external_project_id: externalProjectId,
+      phase,
+      hours,
+      _warnings: rowWarnings,
+    })
   }
 
   return { rows, warnings: globalWarnings }
@@ -196,16 +211,16 @@ export function parseProjectInfoXLS(buffer: ArrayBuffer): ProjectInfoData {
 
 export function generateTimesheetTemplate(): ArrayBuffer {
   const wb = XLSX.utils.book_new()
-  const headers = ['Date', 'Consultant Name', 'Task / Description', 'Project ID', 'Phase', 'Hours']
+  // Matches the ClickUp / external timesheet export format
+  const headers = ['Date', 'User ID', 'User Name', 'Project ID', 'Hours']
   const examples = [
-    ['2025-05-01', 'Alice Tan', 'Requirements gathering', 'ZAP-001', 'Discovery', 8],
-    ['2025-05-02', 'Bob Lim', 'System design review', 'ZAP-001', 'Design', 6],
-    ['2025-05-03', 'Alice Tan', 'UAT support', 'ZAP-001', 'Testing', 4],
-    ['2025-05-04', 'Charlie Wong', 'Project management', 'ZAP-001', 'Management', 2],
-    ['2025-05-05', 'Bob Lim', 'Go-live support', 'ZAP-001', 'Go-Live', 8],
+    ['2025-05-01', 101059714, 'Alice Tan', 90168316816, 8],
+    ['2025-05-02', 100907985, 'Bob Lim', 90168316816, 6],
+    ['2025-05-03', 37681318, 'Alice Tan', 90168316816, 4],
+    ['2025-05-04', 95071170, 'Charlie Wong', 90168316816, 2],
   ]
   const ws = XLSX.utils.aoa_to_sheet([headers, ...examples])
-  ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 35 }, { wch: 12 }, { wch: 14 }, { wch: 8 }]
+  ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 16 }, { wch: 8 }]
   XLSX.utils.book_append_sheet(wb, ws, 'Timesheet')
   const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
   return buf

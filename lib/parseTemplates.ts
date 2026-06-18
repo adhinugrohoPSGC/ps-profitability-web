@@ -26,10 +26,10 @@ function toDate(v: unknown): string {
 export interface TimesheetRow {
   entry_date: string
   consultant_name: string
-  user_external_id: string   // User ID column from template
+  user_external_id: string
   task_description: string
-  project_id: string         // resolved internal UUID (or raw external ID if unresolved)
-  external_project_id: string // raw Project ID from template (e.g. ClickUp ID)
+  project_id: string
+  external_project_id: string
   phase: string
   hours: number
   _warnings: string[]

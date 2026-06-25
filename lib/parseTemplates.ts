@@ -15,10 +15,12 @@ function findCol(row: Record<string, unknown>, candidates: string[]): unknown {
 }
 
 function toStr(v: unknown): string { return String(v ?? '').trim() }
-function toNum(v: unknown): number { const n = Number(v); return isNaN(n) ? 0 : n }
+function toNum(v: unknown): number { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
 function toDate(v: unknown): string {
   if (!v) return ''
   if (v instanceof Date) return v.toISOString().split('T')[0]
+  // Excel serial date (days since 1899-12-30, accounting for the 1900 leap year bug)
+  if (typeof v === 'number') return new Date((v - 25569) * 86400000).toISOString().split('T')[0]
   const d = new Date(String(v))
   return isNaN(d.getTime()) ? String(v) : d.toISOString().split('T')[0]
 }

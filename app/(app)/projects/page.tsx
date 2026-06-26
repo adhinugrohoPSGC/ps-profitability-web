@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
+import ExpensesCard from '@/components/ExpensesCard'
 
 interface Project {
   id: string
@@ -23,6 +24,15 @@ interface Project {
   notes: string | null
   external_id: string | null
   created_at: string
+}
+
+interface BudgetLine {
+  id?: number
+  project_id: string
+  phase: string
+  budgeted_hours: number
+  budgeted_cost: number
+  budgeted_revenue: number
 }
 
 type ProjectForm = Omit<Project, 'id' | 'created_at'>
@@ -59,6 +69,10 @@ export default function ProjectsPage() {
   const [form, setForm] = useState<ProjectForm>(defaultForm())
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
+  const [expenseProject, setExpenseProject] = useState<Project | null>(null)
+  const [budgetProject, setBudgetProject] = useState<Project | null>(null)
+  const [budgetLines, setBudgetLines] = useState<BudgetLine[]>([])
+  const [budgetSaving, setBudgetSaving] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -145,6 +159,50 @@ export default function ProjectsPage() {
     } catch { toast('Failed to update status', 'error') }
   }
 
+  async function loadBudget(p: Project) {
+    const { data } = await createClient()
+      .from('project_budget')
+      .select('*')
+      .eq('project_id', p.id)
+      .order('id')
+    setBudgetLines((data ?? []) as BudgetLine[])
+    setBudgetProject(p)
+  }
+
+  async function saveBudget() {
+    if (!budgetProject) return
+    setBudgetSaving(true)
+    try {
+      await createClient().from('project_budget').delete().eq('project_id', budgetProject.id)
+      const toInsert = budgetLines
+        .filter(l => l.phase.trim())
+        .map(({ id: _id, ...rest }) => ({ ...rest, project_id: budgetProject.id }))
+      if (toInsert.length) {
+        const { error } = await createClient().from('project_budget').insert(toInsert)
+        if (error) throw error
+      }
+      toast('Budget saved', 'success')
+      setBudgetProject(null)
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Save failed', 'error')
+    } finally {
+      setBudgetSaving(false)
+    }
+  }
+
+  function updateBudgetLine(idx: number, field: keyof BudgetLine, value: string | number) {
+    setBudgetLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l))
+  }
+
+  function addBudgetLine() {
+    if (!budgetProject) return
+    setBudgetLines(prev => [...prev, { project_id: budgetProject.id, phase: '', budgeted_hours: 0, budgeted_cost: 0, budgeted_revenue: 0 }])
+  }
+
+  function removeBudgetLine(idx: number) {
+    setBudgetLines(prev => prev.filter((_, i) => i !== idx))
+  }
+
   function handleOpenDashboard(p: Project) {
     setSelectedProject(p.id)
     router.push('/dashboard')
@@ -211,6 +269,17 @@ export default function ProjectsPage() {
                   <button onClick={() => handleToggleArchive(p)} title={p.status === 'archived' ? 'Unarchive' : 'Archive'}
                     className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50">
                     <Archive size={14} />
+                  </button>
+                  <button onClick={() => setExpenseProject(p)} title="Add Expenses"
+                    className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+                    <DollarSign size={14} />
+                  </button>
+                  <button
+                    onClick={() => loadBudget(p)}
+                    title="Edit Budget"
+                    className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50"
+                  >
+                    <BarChart2 size={14} />
                   </button>
                   <button onClick={() => setDeleteTarget(p)} title="Delete"
                     className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50">
@@ -304,6 +373,90 @@ export default function ProjectsPage() {
           <div className="flex justify-end gap-2">
             <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Cancel</button>
             <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">Delete Project</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Expenses Upload Modal */}
+      <Modal open={!!expenseProject} title={`Add Expenses — ${expenseProject?.name ?? ''}`} onClose={() => setExpenseProject(null)} maxWidth="max-w-3xl">
+        <ExpensesCard selectedProject={expenseProject?.id ?? null} hideProjectWarning />
+      </Modal>
+
+      {/* Budget Line Editor Modal */}
+      <Modal open={!!budgetProject} title={`Budget — ${budgetProject?.name ?? ''}`} onClose={() => setBudgetProject(null)} maxWidth="max-w-2xl">
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+                <tr>
+                  {['Phase', 'Budg. Hours', 'Budg. Cost (SGD)', 'Budg. Revenue (SGD)', ''].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {budgetLines.map((line, idx) => (
+                  <tr key={idx}>
+                    <td className="px-3 py-1.5">
+                      <input
+                        value={line.phase}
+                        onChange={e => updateBudgetLine(idx, 'phase', e.target.value)}
+                        placeholder="Discovery"
+                        className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={line.budgeted_hours}
+                        onChange={e => updateBudgetLine(idx, 'budgeted_hours', parseFloat(e.target.value) || 0)}
+                        className="w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <input
+                        type="number" min="0"
+                        value={line.budgeted_cost}
+                        onChange={e => updateBudgetLine(idx, 'budgeted_cost', parseFloat(e.target.value) || 0)}
+                        className="w-32 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <input
+                        type="number" min="0"
+                        value={line.budgeted_revenue}
+                        onChange={e => updateBudgetLine(idx, 'budgeted_revenue', parseFloat(e.target.value) || 0)}
+                        className="w-32 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <button onClick={() => removeBudgetLine(idx)} className="text-slate-300 hover:text-red-500">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {budgetLines.length === 0 && (
+                  <tr><td colSpan={5} className="px-3 py-4 text-center text-sm text-slate-400">No budget lines yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <button
+            onClick={addBudgetLine}
+            className="flex items-center gap-1.5 text-sm text-teal-600 hover:text-teal-800"
+          >
+            <Plus size={14} /> Add Phase
+          </button>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button onClick={() => setBudgetProject(null)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">Cancel</button>
+            <button
+              onClick={saveBudget}
+              disabled={budgetSaving}
+              className="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              {budgetSaving ? 'Saving…' : 'Save Budget'}
+            </button>
           </div>
         </div>
       </Modal>

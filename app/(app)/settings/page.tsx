@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Building2, DollarSign, Gauge, Database, ChevronDown, ChevronUp, Check, AlertTriangle } from 'lucide-react'
+import { Building2, DollarSign, Gauge, Database, ChevronDown, ChevronUp, Check, AlertTriangle, Link, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // Fixed user ID used for all settings storage (no auth required)
@@ -75,6 +75,8 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [clearError, setClearError] = useState('')
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string | null>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -105,6 +107,21 @@ export default function SettingsPage() {
   const update = (key: string, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }))
     saveSetting(key, value)
+  }
+
+  const handleSyncNow = async () => {
+    setSyncLoading(true)
+    setSyncStatus(null)
+    try {
+      const res = await fetch('/api/sync-clickup-manual', { method: 'POST' })
+      const json = await res.json() as { synced?: number; projects?: string[]; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Sync failed')
+      setSyncStatus(`Synced ${json.synced} project(s): ${(json.projects ?? []).join(', ') || 'none'}`)
+    } catch (err) {
+      setSyncStatus(`Error: ${String(err)}`)
+    } finally {
+      setSyncLoading(false)
+    }
   }
 
   const handleExportJson = async () => {
@@ -273,6 +290,49 @@ export default function SettingsPage() {
             </div>
           </Field>
         )}
+      </Section>
+
+      {/* ── ClickUp Integration ──────────────────────────────────────────────── */}
+      <Section icon={Link} title="ClickUp Integration">
+        <Field label="API Token" hint="Personal token from ClickUp → Settings → Apps">
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={settings.clickup_api_token ?? ''}
+              onChange={e => update('clickup_api_token', e.target.value)}
+              placeholder="pk_xxxxxxxxxxxx"
+              className="flex-1 border border-slate-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono"
+            />
+            <SavedBadge k="clickup_api_token" />
+          </div>
+        </Field>
+        <Field label="Workspace ID" hint="Numeric ID from your ClickUp workspace URL">
+          <div className="flex items-center gap-2">
+            <input
+              value={settings.clickup_workspace_id ?? ''}
+              onChange={e => update('clickup_workspace_id', e.target.value)}
+              placeholder="e.g. 9012345678"
+              className="w-52 border border-slate-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono"
+            />
+            <SavedBadge k="clickup_workspace_id" />
+          </div>
+        </Field>
+        <div className="pt-3 flex items-center gap-3">
+          <button
+            onClick={handleSyncNow}
+            disabled={syncLoading}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+          >
+            {syncLoading ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
+            {syncLoading ? 'Syncing…' : 'Sync Now'}
+          </button>
+          {syncStatus && (
+            <p className="text-xs text-slate-500">{syncStatus}</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-2">
+          Nightly sync runs automatically at 2:00 AM UTC. Each project must have its External Project ID set to a ClickUp List ID.
+        </p>
       </Section>
 
       {/* ── Data Management ──────────────────────────────────────────────────── */}

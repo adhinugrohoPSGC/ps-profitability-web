@@ -14,7 +14,9 @@ export async function POST() {
 
   // Delegate to the main sync route handler directly (same process)
   const { POST: syncHandler } = await import('../sync-clickup/route')
-  // Call with an empty request — no CRON_SECRET check when CRON_SECRET is not set
-  const fakeReq = new Request('http://localhost/api/sync-clickup', { method: 'POST' })
+  const headers: HeadersInit = process.env.CRON_SECRET
+    ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+    : {}
+  const fakeReq = new Request('http://localhost/api/sync-clickup', { method: 'POST', headers })
   return syncHandler(fakeReq as Parameters<typeof syncHandler>[0])
 }

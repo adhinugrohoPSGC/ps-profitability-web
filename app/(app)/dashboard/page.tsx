@@ -92,36 +92,16 @@ export default function DashboardPage() {
       .map(c => ({ ...c, shortName: c.name.split(' ').slice(-1)[0], cost: Math.round(c.cost) }))
   }, [timesheet])
 
-  const budgetRows = useMemo(() => {
-    const actualMap: Record<string, { hours: number; cost: number }> = {}
-    for (const e of timesheet) {
-      const ph = e.phase ?? 'Unassigned'
-      if (!actualMap[ph]) actualMap[ph] = { hours: 0, cost: 0 }
-      actualMap[ph].hours += e.hours ?? 0
-      actualMap[ph].cost += e.labour_cost_sgd ?? 0
-    }
-    const allPhases = new Set([...budget.map(b => b.phase), ...Object.keys(actualMap)])
-    return [...allPhases].map(phase => {
-      const bud = budget.find(b => b.phase === phase)
-      const act = actualMap[phase] ?? { hours: 0, cost: 0 }
-      const hrsVariance = act.hours - (bud?.budgeted_hours ?? 0)
-      const costVariance = act.cost - (bud?.budgeted_cost ?? 0)
-      const variancePct = (bud?.budgeted_cost ?? 0) > 0 ? (costVariance / bud!.budgeted_cost) * 100 : 0
-      return { phase, budgetedHours: bud?.budgeted_hours ?? 0, actualHours: act.hours, hrsVariance, budgetedCost: bud?.budgeted_cost ?? 0, actualCost: act.cost, costVariance, variancePct }
-    })
+  const budgetTotals = useMemo(() => {
+    const actualHours = timesheet.reduce((s, e) => s + (e.hours ?? 0), 0)
+    const actualCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
+    const budgetedHours = budget.reduce((s, b) => s + (b.budgeted_hours ?? 0), 0)
+    const budgetedCost = budget.reduce((s, b) => s + (b.budgeted_cost ?? 0), 0)
+    const costVariance = actualCost - budgetedCost
+    const hrsVariance = actualHours - budgetedHours
+    const variancePct = budgetedCost > 0 ? (costVariance / budgetedCost) * 100 : 0
+    return { budgetedHours, actualHours, hrsVariance, budgetedCost, actualCost, costVariance, variancePct }
   }, [budget, timesheet])
-
-  const budgetTotals = useMemo(() => budgetRows.reduce(
-    (acc, r) => ({
-      budgetedHours: acc.budgetedHours + r.budgetedHours,
-      actualHours: acc.actualHours + r.actualHours,
-      hrsVariance: acc.hrsVariance + r.hrsVariance,
-      budgetedCost: acc.budgetedCost + r.budgetedCost,
-      actualCost: acc.actualCost + r.actualCost,
-      costVariance: acc.costVariance + r.costVariance,
-    }),
-    { budgetedHours: 0, actualHours: 0, hrsVariance: 0, budgetedCost: 0, actualCost: 0, costVariance: 0 }
-  ), [budgetRows])
 
   if (!selectedProject) return (
     <div className="flex flex-col items-center justify-center h-full text-center py-24">
@@ -210,55 +190,40 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Budget vs Actual */}
-      {budgetRows.length > 0 && (
+      {/* Budget vs Actual — single totals row */}
+      {(budgetTotals.budgetedCost > 0 || budgetTotals.actualCost > 0) && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h3 className="text-sm font-semibold text-slate-700 mb-4">Budget vs Actual</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
-                  {['Phase', 'Budg. Hrs', 'Act. Hrs', 'Hrs Var', 'Budg. Cost', 'Act. Cost', 'Cost Var', 'Var %'].map(h => (
-                    <th key={h} className={`py-2 ${h === 'Phase' ? 'text-left pr-4' : 'text-right px-2'}`}>{h}</th>
+                  {['Budg. Hrs', 'Act. Hrs', 'Hrs Var', 'Budg. Cost', 'Act. Cost', 'Cost Var', 'Var %'].map(h => (
+                    <th key={h} className="text-right px-3 py-2 font-medium first:text-left">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {budgetRows.map(row => (
-                  <tr key={row.phase} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2 pr-4 font-medium text-slate-700">{row.phase}</td>
-                    <td className="text-right py-2 px-2 text-slate-600">{row.budgetedHours.toFixed(1)}</td>
-                    <td className="text-right py-2 px-2 text-slate-600">{row.actualHours.toFixed(1)}</td>
-                    <td className={`text-right py-2 px-2 ${row.hrsVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{row.hrsVariance > 0 ? '+' : ''}{row.hrsVariance.toFixed(1)}</td>
-                    <td className="text-right py-2 px-2 text-slate-600">{fmt(row.budgetedCost)}</td>
-                    <td className="text-right py-2 px-2 text-slate-600">{fmt(row.actualCost)}</td>
-                    <td className={`text-right py-2 px-2 ${row.costVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{row.costVariance > 0 ? '+' : ''}{fmt(row.costVariance)}</td>
-                    <td className="text-right py-2 pl-2">
-                      {row.budgetedCost > 0
-                        ? <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${variancePctColor(row.variancePct)}`}>{row.variancePct > 0 ? '+' : ''}{fmtPct(row.variancePct)}</span>
-                        : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-200 font-bold text-slate-800">
-                  <td className="py-2 pr-4">Total</td>
-                  <td className="text-right py-2 px-2">{budgetTotals.budgetedHours.toFixed(1)}</td>
-                  <td className="text-right py-2 px-2">{budgetTotals.actualHours.toFixed(1)}</td>
-                  <td className={`text-right py-2 px-2 ${budgetTotals.hrsVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{budgetTotals.hrsVariance > 0 ? '+' : ''}{budgetTotals.hrsVariance.toFixed(1)}</td>
-                  <td className="text-right py-2 px-2">{fmt(budgetTotals.budgetedCost)}</td>
-                  <td className="text-right py-2 px-2">{fmt(budgetTotals.actualCost)}</td>
-                  <td className={`text-right py-2 px-2 ${budgetTotals.costVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{budgetTotals.costVariance > 0 ? '+' : ''}{fmt(budgetTotals.costVariance)}</td>
-                  <td className="text-right py-2 pl-2">
+                <tr className="font-semibold text-slate-800">
+                  <td className="text-right px-3 py-3">{budgetTotals.budgetedHours.toFixed(1)}</td>
+                  <td className="text-right px-3 py-3">{budgetTotals.actualHours.toFixed(1)}</td>
+                  <td className={`text-right px-3 py-3 ${budgetTotals.hrsVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {budgetTotals.hrsVariance > 0 ? '+' : ''}{budgetTotals.hrsVariance.toFixed(1)}
+                  </td>
+                  <td className="text-right px-3 py-3">{fmt(budgetTotals.budgetedCost)}</td>
+                  <td className="text-right px-3 py-3">{fmt(budgetTotals.actualCost)}</td>
+                  <td className={`text-right px-3 py-3 ${budgetTotals.costVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {budgetTotals.costVariance > 0 ? '+' : ''}{fmt(budgetTotals.costVariance)}
+                  </td>
+                  <td className="text-right px-3 py-3">
                     {budgetTotals.budgetedCost > 0
-                      ? <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${variancePctColor((budgetTotals.costVariance / budgetTotals.budgetedCost) * 100)}`}>
-                          {((budgetTotals.costVariance / budgetTotals.budgetedCost) * 100) > 0 ? '+' : ''}{fmtPct((budgetTotals.costVariance / budgetTotals.budgetedCost) * 100)}
+                      ? <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${variancePctColor(budgetTotals.variancePct)}`}>
+                          {budgetTotals.variancePct > 0 ? '+' : ''}{fmtPct(budgetTotals.variancePct)}
                         </span>
                       : '—'}
                   </td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
           </div>
         </div>

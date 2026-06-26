@@ -2,20 +2,21 @@
 
 import { useState, useRef, useCallback, useEffect, DragEvent } from 'react'
 import {
-  Upload as UploadIcon, FileText, DollarSign, Building2,
+  Upload as UploadIcon, FileText, Building2,
   CheckCircle, AlertTriangle, X, Download, ChevronDown, ChevronUp,
   Loader2, RefreshCw
 } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import {
-  parseTimesheetXLS, parseExpensesXLS, parseProjectInfoXLS,
-  generateTimesheetTemplate, generateExpensesTemplate, generateProjectInfoTemplate,
-  type TimesheetRow, type ExpenseRow, type ProjectInfoData,
+  parseTimesheetXLS, parseProjectInfoXLS,
+  generateTimesheetTemplate, generateProjectInfoTemplate,
+  type TimesheetRow, type ProjectInfoData,
 } from '@/lib/parseTemplates'
 import { findBestMatches, type MatchResult } from '@/lib/fuzzyMatch'
 import Modal from '@/components/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
+import ExpensesCard from '@/components/ExpensesCard'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -484,228 +485,6 @@ function TimesheetCard({ selectedProject }: { selectedProject: string | null }) 
             <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-amber-800">
               The file <strong>{fileName}</strong> has been imported before for this project. Importing again will add duplicate entries.
-            </p>
-          </div>
-          <div className="flex gap-3 justify-end">
-            <button onClick={() => setConfirming(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Cancel</button>
-            <button onClick={doImport} className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700">Import Anyway</button>
-          </div>
-        </div>
-      </Modal>
-    </Card>
-  )
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Card B — Expenses
-// ══════════════════════════════════════════════════════════════════════════════
-
-function ExpensesCard({ selectedProject }: { selectedProject: string | null }) {
-  const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
-  const [fileName, setFileName] = useState('')
-  const [rows, setRows] = useState<ExpenseRow[]>([])
-  const [warnings, setWarnings] = useState<string[]>([])
-  const [totals, setTotals] = useState<Record<string, number>>({})
-  const [confirming, setConfirming] = useState(false)
-  const [saveLoading, setSaveLoading] = useState(false)
-  const [showAll, setShowAll] = useState(false)
-  const [fxRate, setFxRate] = useState(15000)
-
-  useEffect(() => {
-    createClient().from('user_settings').select('key, value').then(({ data }) => {
-      const s = Object.fromEntries((data ?? []).map((r: { key: string; value: string }) => [r.key, r.value]))
-      if (s['usd_to_idr']) setFxRate(Number(s['usd_to_idr']))
-    })
-  }, [])
-
-  const handleFile = useCallback(async (buf: ArrayBuffer, name: string) => {
-    setLoading(true); setFileName(name)
-    try {
-      const { rows: parsed, warnings: w, totalByCategory } = parseExpensesXLS(buf, selectedProject ?? undefined, fxRate)
-      setRows(parsed); setWarnings(w); setTotals(totalByCategory)
-    } catch (err) {
-      toast(`Parse error: ${String(err)}`, 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedProject, fxRate, toast])
-
-  const handleConfirmImport = async () => {
-    if (!selectedProject) { toast('No project selected', 'warning'); return }
-    const { data: dup } = await createClient()
-      .from('import_log').select('id')
-      .eq('filename', fileName).eq('project_id', selectedProject).maybeSingle()
-    if (dup) { setConfirming(true); return }
-    await doImport()
-  }
-
-  const doImport = async () => {
-    setSaveLoading(true); setConfirming(false)
-    const batch = batchId()
-    try {
-      const entries = rows.map(row => {
-        const amountSgd = row.currency === 'SGD' ? row.amount_native : row.currency === 'IDR' ? row.amount_native / fxRate : row.amount_native
-        return {
-          project_id: row.project_id || selectedProject,
-          expense_date: row.expense_date,
-          category: row.category,
-          description: row.description,
-          vendor: row.vendor,
-          amount_native: row.amount_native,
-          currency: row.currency,
-          fx_rate: row.currency === 'IDR' ? fxRate : 1,
-          amount_sgd: amountSgd,
-          paid_by: row.paid_by,
-          receipted: row.receipted,
-          notes: row.notes,
-          import_batch_id: batch,
-        }
-      })
-      const { error } = await createClient().from('expense_entries').insert(entries)
-      if (error) throw error
-      await createClient().from('import_log').insert({
-        batch_id: batch,
-        project_id: selectedProject,
-        template_type: 'expenses',
-        filename: fileName,
-        rows_imported: entries.length,
-        rows_skipped: warnings.length,
-      })
-      toast(`Imported ${entries.length} expense entries`, 'success')
-      setRows([]); setFileName(''); setWarnings([]); setTotals({})
-    } catch (err) {
-      toast(`Import failed: ${String(err)}`, 'error')
-    } finally {
-      setSaveLoading(false)
-    }
-  }
-
-  const displayRows = showAll ? rows : rows.slice(0, 15)
-  const totalRows = rows.reduce((s, r) => {
-    const sgd = r.currency === 'SGD' ? r.amount_native : r.currency === 'IDR' ? r.amount_native / fxRate : r.amount_native
-    return s + sgd
-  }, 0)
-  const rowWarnings = rows.filter(r => r._warnings.length > 0).length
-
-  return (
-    <Card
-      icon={<DollarSign size={18} />}
-      title="Expenses Upload"
-      description="Import project expense claims from Excel expenses template"
-      onDownloadTemplate={() => downloadBlob(generateExpensesTemplate(), 'expenses-template.xlsx')}
-    >
-      <DropZone onFile={handleFile} loading={loading} hasFile={rows.length > 0} />
-
-      {rows.length > 0 && (
-        <div className="mt-4 space-y-4">
-          {/* Summary */}
-          <div className="flex items-center gap-4 text-sm flex-wrap">
-            <span className="text-slate-500">{rows.length} rows</span>
-            <span className="text-slate-400">|</span>
-            <span className="text-slate-500">Total ≈ {fmt(totalRows, 'SGD')} SGD</span>
-            {rowWarnings > 0 && (
-              <>
-                <span className="text-slate-400">|</span>
-                <span className="text-amber-600 font-medium">{rowWarnings} rows with warnings</span>
-              </>
-            )}
-            <button
-              onClick={() => { setRows([]); setFileName(''); setWarnings([]); setTotals({}) }}
-              className="ml-auto text-slate-400 hover:text-red-500 flex items-center gap-1 text-xs"
-            >
-              <X size={12} /> Clear
-            </button>
-          </div>
-
-          {warnings.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
-              {warnings.map((w, i) => (
-                <p key={i} className="text-xs text-amber-700 flex items-center gap-1.5">
-                  <AlertTriangle size={12} className="flex-shrink-0" />{w}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wide">
-                <tr>
-                  {['Date', 'Category', 'Description', 'Vendor', 'Amount', 'CCY', 'Rcpt', 'Status'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {displayRows.map((row, i) => (
-                  <tr key={i} className={row._warnings.length > 0 ? 'bg-amber-50/30' : ''}>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.expense_date || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{row.category || <span className="text-red-400 italic">none</span>}</td>
-                    <td className="px-3 py-2 max-w-[160px] truncate text-slate-500" title={row.description}>{row.description || '—'}</td>
-                    <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.vendor}>{row.vendor || '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-700">{row.amount_native.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-slate-500">{row.currency}</td>
-                    <td className="px-3 py-2 text-center">
-                      {row.receipted ? <CheckCircle size={12} className="text-green-500 mx-auto" /> : <X size={12} className="text-slate-300 mx-auto" />}
-                    </td>
-                    <td className="px-3 py-2">
-                      {row._warnings.length > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                          <AlertTriangle size={10} />{row._warnings.length} warn
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">OK</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {rows.length > 15 && (
-            <button onClick={() => setShowAll(v => !v)} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-              {showAll ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {rows.length} rows</>}
-            </button>
-          )}
-
-          {/* Total by category */}
-          {Object.keys(totals).length > 0 && (
-            <div className="bg-slate-50 rounded-lg border border-slate-200 p-4">
-              <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Totals by Category (SGD equiv.)</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {Object.entries(totals).map(([cat, amt]) => (
-                  <div key={cat} className="flex items-center justify-between gap-2 bg-white rounded px-3 py-1.5 border border-slate-100">
-                    <span className="text-xs text-slate-600 truncate">{cat}</span>
-                    <span className="text-xs font-mono font-semibold text-slate-800 whitespace-nowrap">{fmt(amt)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <p className="text-xs text-slate-400">Using IDR/SGD rate: {fxRate.toLocaleString()}</p>
-            <button
-              onClick={handleConfirmImport}
-              disabled={saveLoading || !selectedProject}
-              className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {saveLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              Confirm Import ({rows.length} rows)
-            </button>
-          </div>
-        </div>
-      )}
-
-      <Modal open={confirming} title="Duplicate Import Detected" onClose={() => setConfirming(false)}>
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-            <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800">
-              The file <strong>{fileName}</strong> has been imported before. Importing again will add duplicate entries.
             </p>
           </div>
           <div className="flex gap-3 justify-end">

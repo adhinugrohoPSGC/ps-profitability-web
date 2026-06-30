@@ -11,6 +11,7 @@ const TITLES: Record<string, string> = {
   '/projects':  'Projects',
   '/rate-card': 'Rate Card Manager',
   '/reports':   'Reports',
+  '/records':   'Records',
   '/settings':  'Settings',
 }
 
@@ -24,7 +25,7 @@ export default function TopBar() {
       .then(({ data }) => setProjects(data ?? []))
   }, [])
 
-  const showProjectSelector = ['/dashboard', '/upload', '/reports'].includes(pathname)
+  const showProjectSelector = ['/dashboard', '/upload', '/reports', '/records'].includes(pathname)
 
   return (
     <header className="h-14 flex items-center justify-between px-6 bg-white border-b border-slate-200 flex-shrink-0">

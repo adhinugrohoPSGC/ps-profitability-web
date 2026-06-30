@@ -1,11 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Upload, FolderKanban, Users, FileBarChart2, Settings, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Upload, FolderKanban, Users, FileBarChart2, Settings, TrendingUp, ClipboardList } from 'lucide-react'
 
 const NAV = [
   { href: '/dashboard',  label: 'Dashboard',       icon: LayoutDashboard },
   { href: '/upload',     label: 'Upload Templates', icon: Upload },
+  { href: '/records',    label: 'Records',          icon: ClipboardList },
   { href: '/projects',   label: 'Projects',         icon: FolderKanban },
   { href: '/rate-card',  label: 'Rate Card',        icon: Users },
   { href: '/reports',    label: 'Reports',          icon: FileBarChart2 },

@@ -174,6 +174,7 @@ export default function ExpensesCard({ selectedProject, hideProjectWarning }: { 
       const entries = rows.map(row => {
         const amountSgd = row.currency === 'SGD' ? row.amount_native : row.currency === 'IDR' ? row.amount_native / fxRate : row.amount_native
         return {
+          user_id: ANON_USER_ID,
           project_id: selectedProject,
           expense_date: row.expense_date,
           category: row.category,

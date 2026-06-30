@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ export default function RecordsPage() {
   const [batchFilter, setBatchFilter] = useState('')
   const [showAllTs, setShowAllTs] = useState(false)
   const [showAllEx, setShowAllEx] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!selectedProject) { setTimesheet([]); setExpenses([]); return }
@@ -75,7 +76,7 @@ export default function RecordsPage() {
       setTimesheet((ts.data ?? []) as TimesheetEntry[])
       setExpenses((ex.data ?? []) as ExpenseEntry[])
     }).finally(() => setLoading(false))
-  }, [selectedProject])
+  }, [selectedProject, refreshKey])
 
   // Batch options
   const tsBatches = useMemo(() => [...new Set(timesheet.map(r => r.import_batch_id).filter(Boolean))], [timesheet])
@@ -145,6 +146,15 @@ export default function RecordsPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-800">Records</h1>
           <p className="text-sm text-slate-400 mt-0.5">Timesheet and expense entries for this project</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setRefreshKey(k => k + 1)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
         </div>
         {/* Batch filter */}
         <div className="flex items-center gap-2">

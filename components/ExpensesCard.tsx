@@ -15,6 +15,8 @@ import Modal from '@/components/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { useRef } from 'react'
 
+const ANON_USER_ID = '00000000-0000-0000-0000-000000000001'
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function downloadBlob(buf: ArrayBuffer, filename: string) {
@@ -196,11 +198,13 @@ export default function ExpensesCard({ selectedProject, hideProjectWarning }: { 
         filename: fileName,
         rows_imported: entries.length,
         rows_skipped: warnings.length,
+        user_id: ANON_USER_ID,
       })
       toast(`Imported ${entries.length} expense entries`, 'success')
       setRows([]); setFileName(''); setWarnings([]); setTotals({})
     } catch (err) {
-      toast(`Import failed: ${String(err)}`, 'error')
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message ?? String(err)
+      toast(`Import failed: ${msg}`, 'error')
     } finally {
       setSaveLoading(false)
     }

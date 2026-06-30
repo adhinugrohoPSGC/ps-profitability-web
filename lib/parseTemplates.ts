@@ -67,7 +67,7 @@ export interface ProjectInfoData {
   budget_lines: { phase: string; budgeted_hours: number; budgeted_cost: number; budgeted_revenue: number }[]
 }
 
-const VALID_EXPENSE_CATEGORIES = ['Travel', 'Accommodation', 'Meals & Entertainment', 'Overhead', 'Software & Tools', 'Miscellaneous']
+const VALID_EXPENSE_CATEGORIES = ['Travel', 'Accommodation', 'Meals & Entertainment', 'Overhead', 'Software & Tools', 'Miscellaneous', 'Daily Allowance', 'Transportation', 'Others']
 const VALID_CURRENCIES = ['USD', 'IDR', 'SGD', 'EUR', 'GBP']
 
 export function parseTimesheetXLS(buffer: ArrayBuffer, defaultProjectId?: string): { rows: TimesheetRow[]; warnings: string[] } {

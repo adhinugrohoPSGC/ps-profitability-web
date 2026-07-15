@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/supabase/service'
 
@@ -29,10 +30,12 @@ export async function DELETE(
 
   const service = getServiceClient()
 
-  await service.from('user_profiles').delete().eq('id', id)
+  const { error: profileError } = await service.from('user_profiles').delete().eq('id', id)
+  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
 
-  const { error } = await service.auth.admin.deleteUser(id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { error: authError } = await service.auth.admin.deleteUser(id)
+  if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
 
+  revalidatePath('/admin/users')
   return NextResponse.json({ success: true })
 }

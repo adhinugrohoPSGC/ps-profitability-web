@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react'
 
 type UserProfile = {
@@ -18,6 +19,7 @@ const STATUS_STYLE = {
 }
 
 export default function AdminUsersClient({ users: initial }: { users: UserProfile[] }) {
+  const router = useRouter()
   const [users, setUsers] = useState(initial)
   const [loading, setLoading] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
@@ -31,6 +33,7 @@ export default function AdminUsersClient({ users: initial }: { users: UserProfil
       if (!res.ok) throw new Error(data.error)
       setUsers(prev => prev.filter(u => u.id !== id))
       setMsg('User removed.')
+      router.refresh()
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Failed')
     } finally {

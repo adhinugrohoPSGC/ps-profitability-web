@@ -28,14 +28,19 @@ export async function DELETE(
     return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 })
   }
 
-  const service = getServiceClient()
+  try {
+    const service = getServiceClient()
 
-  const { error: profileError } = await service.from('user_profiles').delete().eq('id', id)
-  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
+    const { error: profileError } = await service.from('user_profiles').delete().eq('id', id)
+    if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
 
-  const { error: authError } = await service.auth.admin.deleteUser(id)
-  if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
+    const { error: authError } = await service.auth.admin.deleteUser(id)
+    if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
 
-  revalidatePath('/admin/users')
-  return NextResponse.json({ success: true })
+    revalidatePath('/admin/users')
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Internal error'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }

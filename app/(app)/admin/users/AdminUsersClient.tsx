@@ -29,8 +29,9 @@ export default function AdminUsersClient({ users: initial }: { users: UserProfil
     setLoading(id); setMsg(''); setConfirmRemove(null)
     try {
       const res = await fetch(`/api/auth/remove/${id}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      const text = await res.text()
+      const data = text ? JSON.parse(text) : {}
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
       setUsers(prev => prev.filter(u => u.id !== id))
       setMsg('User removed.')
       router.refresh()

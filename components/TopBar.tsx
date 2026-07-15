@@ -1,29 +1,46 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 
 const TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/upload':    'Upload Templates',
-  '/projects':  'Projects',
-  '/rate-card': 'Rate Card Manager',
-  '/reports':   'Reports',
-  '/records':   'Records',
-  '/settings':  'Settings',
+  '/dashboard':   'Dashboard',
+  '/upload':      'Upload Templates',
+  '/projects':    'Projects',
+  '/rate-card':   'Rate Card Manager',
+  '/reports':     'Reports',
+  '/records':     'Records',
+  '/settings':    'Settings',
+  '/admin/users': 'User Management',
 }
 
 export default function TopBar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { selectedProject, setSelectedProject } = useProject()
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  const [userName, setUserName] = useState('')
 
   useEffect(() => {
-    createClient().from('projects').select('id, name').order('created_at', { ascending: false })
+    const sb = createClient()
+    sb.from('projects').select('id, name').order('created_at', { ascending: false })
       .then(({ data }) => setProjects(data ?? []))
+    sb.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setUserName(
+          data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || ''
+        )
+      }
+    })
   }, [])
+
+  async function handleLogout() {
+    await createClient().auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   const showProjectSelector = ['/dashboard', '/upload', '/reports', '/records'].includes(pathname)
 
@@ -47,6 +64,21 @@ export default function TopBar() {
               </select>
               <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
+          </div>
+        )}
+        {userName && (
+          <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+            <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-semibold text-teal-700">{userName[0].toUpperCase()}</span>
+            </div>
+            <span className="text-xs text-slate-600 max-w-[120px] truncate">{userName}</span>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="text-slate-400 hover:text-red-500 transition-colors"
+            >
+              <LogOut size={14} />
+            </button>
           </div>
         )}
       </div>

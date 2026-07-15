@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { CheckCircle, XCircle, Clock } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react'
 
 type UserProfile = {
   id: string
@@ -21,6 +21,22 @@ export default function AdminUsersClient({ users: initial }: { users: UserProfil
   const [users, setUsers] = useState(initial)
   const [loading, setLoading] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+
+  async function removeUser(id: string) {
+    setLoading(id); setMsg(''); setConfirmRemove(null)
+    try {
+      const res = await fetch(`/api/auth/remove/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setUsers(prev => prev.filter(u => u.id !== id))
+      setMsg('User removed.')
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setLoading(null)
+    }
+  }
 
   async function updateStatus(id: string, status: 'approved' | 'rejected') {
     setLoading(id); setMsg('')
@@ -85,24 +101,53 @@ export default function AdminUsersClient({ users: initial }: { users: UserProfil
                   {new Date(u.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
-                  {u.status === 'pending' && (
-                    <div className="flex items-center gap-2 justify-end">
+                  <div className="flex items-center gap-2 justify-end">
+                    {u.status === 'pending' && (
+                      <>
+                        <button
+                          disabled={loading === u.id}
+                          onClick={() => updateStatus(u.id, 'approved')}
+                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          disabled={loading === u.id}
+                          onClick={() => updateStatus(u.id, 'rejected')}
+                          className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600 text-xs font-medium rounded-lg transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                    {confirmRemove === u.id ? (
+                      <>
+                        <span className="text-xs text-slate-500">Remove?</span>
+                        <button
+                          disabled={loading === u.id}
+                          onClick={() => removeUser(u.id)}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmRemove(null)}
+                          className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
                       <button
                         disabled={loading === u.id}
-                        onClick={() => updateStatus(u.id, 'approved')}
-                        className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                        onClick={() => setConfirmRemove(u.id)}
+                        title="Remove user"
+                        className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-50 transition-colors"
                       >
-                        Approve
+                        <Trash2 size={14} />
                       </button>
-                      <button
-                        disabled={loading === u.id}
-                        onClick={() => updateStatus(u.id, 'rejected')}
-                        className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-600 text-xs font-medium rounded-lg transition-colors"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -1,11 +1,9 @@
 'use client'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Upload, FolderKanban, Users,
-  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck,
+  FileBarChart2, Settings, TrendingUp, ClipboardList,
 } from 'lucide-react'
 
 const NAV = [
@@ -20,17 +18,6 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  useEffect(() => {
-    const sb = createClient()
-    sb.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
-      const { data: profile } = await sb
-        .from('user_profiles').select('role').eq('id', data.user.id).single()
-      setIsAdmin(profile?.role === 'admin')
-    })
-  }, [])
 
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar flex flex-col">
@@ -59,18 +46,6 @@ export default function Sidebar() {
             </Link>
           )
         })}
-        {isAdmin && (
-          <Link href="/admin/users"
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              pathname === '/admin/users'
-                ? 'bg-accent text-white'
-                : 'text-white/60 hover:bg-sidebar-hover hover:text-white'
-            }`}
-          >
-            <ShieldCheck size={16} />
-            <span className="flex-1">Admin: Users</span>
-          </Link>
-        )}
       </nav>
       <div className="px-5 py-3 border-t border-white/10">
         <p className="text-white/30 text-xs">v2.0.0 · Web</p>

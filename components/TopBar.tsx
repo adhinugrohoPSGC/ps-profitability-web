@@ -13,7 +13,6 @@ const TITLES: Record<string, string> = {
   '/reports':     'Reports',
   '/records':     'Records',
   '/settings':    'Settings',
-  '/admin/users': 'User Management',
 }
 
 export default function TopBar() {

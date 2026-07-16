@@ -54,7 +54,6 @@ export interface ExpenseRow {
 export interface ProjectInfoData {
   id: string
   name: string
-  client_name: string
   project_manager: string
   start_date: string
   end_date: string
@@ -195,7 +194,6 @@ export function parseProjectInfoXLS(buffer: ArrayBuffer): ProjectInfoData {
   return {
     id: get('Project ID', 'project_id') || `PRJ-${Date.now()}`,
     name: get('Project Name', 'project_name', 'name'),
-    client_name: get('Client Name', 'client', 'client_name'),
     project_manager: get('Project Manager', 'pm', 'manager'),
     start_date: toDate(get('Start Date', 'start_date', 'start')),
     end_date: toDate(get('End Date', 'end_date', 'end')),
@@ -253,7 +251,6 @@ export function generateProjectInfoTemplate(): ArrayBuffer {
     ['Field', 'Value'],
     ['Project ID', 'ZAP-001'],
     ['Project Name', 'Zap Cloud ERP Implementation'],
-    ['Client Name', 'Zap Corp Pte Ltd'],
     ['Project Manager', 'Alice Tan'],
     ['Start Date', '2025-01-01'],
     ['End Date', '2025-06-30'],

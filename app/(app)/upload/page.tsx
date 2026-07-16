@@ -540,7 +540,7 @@ function ProjectInfoCard({ onProjectImported }: { onProjectImported?: (id: strin
       // Do NOT include the id from parseProjectInfoXLS — that's a generated string like PRJ-xxx
       // PostgreSQL assigns the UUID
       const projectData = {
-        name: data.name, client_name: data.client_name,
+        name: data.name,
         project_manager: data.project_manager, start_date: data.start_date, end_date: data.end_date,
         contract_value: data.contract_value, contract_currency: data.contract_currency,
         billing_type: data.billing_type, phases: data.phases,
@@ -591,7 +591,6 @@ function ProjectInfoCard({ onProjectImported }: { onProjectImported?: (id: strin
   const kv: [string, string][] = data ? [
     ['Project ID', data.id],
     ['Project Name', data.name],
-    ['Client', data.client_name],
     ['Project Manager', data.project_manager],
     ['Start Date', data.start_date],
     ['End Date', data.end_date],

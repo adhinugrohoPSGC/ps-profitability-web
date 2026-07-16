@@ -10,7 +10,6 @@ import { useProject } from '@/contexts/ProjectContext'
 interface Project {
   id: string
   name: string
-  client_name: string
   project_manager: string
   start_date: string
   end_date: string
@@ -188,7 +187,6 @@ async function generateReport(opts: {
 
     ws.addRow([])
     ws.addRow(['Project', project.name])
-    ws.addRow(['Client', project.client_name ?? ''])
     ws.addRow(['Project Manager', project.project_manager ?? ''])
     ws.addRow(['Period', `${project.start_date ?? ''} — ${project.end_date ?? ''}`])
     ws.addRow(['Generated', generatedAt])
@@ -727,7 +725,6 @@ export default function ReportsPage() {
               <div className="bg-slate-50 rounded-lg p-4">
                 <p className="text-xs font-medium text-slate-500 mb-1">Project</p>
                 <p className="text-sm font-semibold text-slate-800">{selectedProj.name}</p>
-                <p className="text-xs text-slate-500">{selectedProj.client_name}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-4">
                 <p className="text-xs font-medium text-slate-500 mb-1">Period</p>

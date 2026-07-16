@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
 
 interface Project {
-  id: string; name: string; client_name: string; contract_value: number
+  id: string; name: string; contract_value: number
   contract_currency: string; billing_type: string; overhead_rate_pct: number
 }
 interface TimesheetEntry {

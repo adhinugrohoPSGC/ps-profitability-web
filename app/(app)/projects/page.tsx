@@ -11,7 +11,6 @@ import ExpensesCard from '@/components/ExpensesCard'
 interface Project {
   id: string
   name: string
-  client_name: string | null
   project_manager: string | null
   start_date: string | null
   end_date: string | null
@@ -39,7 +38,7 @@ type ProjectForm = Omit<Project, 'id' | 'created_at'>
 
 function defaultForm(): ProjectForm {
   return {
-    name: '', client_name: '', project_manager: '',
+    name: '', project_manager: '',
     start_date: '', end_date: '', contract_value: 0,
     contract_currency: 'SGD', billing_type: 'Fixed Fee',
     phases: 'Discovery,Design,Build,Testing,Go-Live',
@@ -89,14 +88,13 @@ export default function ProjectsPage() {
 
   const filtered = projects.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.client_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (p.project_manager ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   function openAdd() { setForm(defaultForm()); setEditingId(null); setShowModal(true) }
   function openEdit(p: Project) {
     setForm({
-      name: p.name, client_name: p.client_name ?? '', project_manager: p.project_manager ?? '',
+      name: p.name, project_manager: p.project_manager ?? '',
       start_date: p.start_date ?? '', end_date: p.end_date ?? '',
       contract_value: p.contract_value, contract_currency: p.contract_currency,
       billing_type: p.billing_type, phases: p.phases, overhead_rate_pct: p.overhead_rate_pct,
@@ -114,7 +112,6 @@ export default function ProjectsPage() {
       const payload = {
         ...form,
         name: form.name.trim(),
-        client_name: form.client_name || null,
         project_manager: form.project_manager || null,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
@@ -249,7 +246,6 @@ export default function ProjectsPage() {
                     <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.billing_type}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-slate-500">
-                    {p.client_name && <span>Client: <span className="text-slate-700">{p.client_name}</span></span>}
                     {p.project_manager && <span>PM: <span className="text-slate-700">{p.project_manager}</span></span>}
                     {p.contract_value > 0 && <span>Contract: <span className="text-slate-700 font-medium">{fmt(p.contract_value, p.contract_currency)}</span></span>}
                   </div>
@@ -300,10 +296,6 @@ export default function ProjectsPage() {
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className={inputCls} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Client Name</label>
-              <input value={form.client_name ?? ''} onChange={e => setForm(p => ({ ...p, client_name: e.target.value }))} className={inputCls} />
-            </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Project Manager</label>
               <input value={form.project_manager ?? ''} onChange={e => setForm(p => ({ ...p, project_manager: e.target.value }))} className={inputCls} />

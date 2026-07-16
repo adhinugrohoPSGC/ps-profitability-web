@@ -61,7 +61,7 @@ export default function DashboardPage() {
   const financials = useMemo(() => {
     const labourCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
     const directExpenses = expenses.reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-    const sgaRatePct = project?.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
+    const sgaRatePct = project?.overhead_rate_pct || parseFloat(settings.overhead_rate_pct ?? '0')
     // SG&A is deducted directly as project cost: % of contract value
     const sga = (project?.contract_value ?? 0) * (sgaRatePct / 100)
     const totalCost = labourCost + directExpenses + sga
@@ -200,6 +200,20 @@ export default function DashboardPage() {
                 <span>{lbl} {fmt(Number(val))}</span>
               </div>
             ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-3 gap-2">
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Total Cost</p>
+              <p className="text-sm font-bold text-slate-800">{fmt(totalCost)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Gross Profit</p>
+              <p className={`text-sm font-bold ${grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(grossProfit)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-0.5">Gross Margin</p>
+              <p className={`text-sm font-bold ${marginColor(grossMarginPct)}`}>{fmtPct(grossMarginPct)}</p>
+            </div>
           </div>
         </div>
 

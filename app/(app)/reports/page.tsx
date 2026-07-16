@@ -149,7 +149,7 @@ async function generateReport(opts: {
   // Financial calcs
   const labourCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
   const directExpenses = expenses.reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-  const sgaRatePct = project.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
+  const sgaRatePct = project.overhead_rate_pct || parseFloat(settings.overhead_rate_pct ?? '0')
   // SG&A is deducted directly as project cost: % of contract value
   const sga = (project.contract_value ?? 0) * (sgaRatePct / 100)
   const totalCost = labourCost + directExpenses + sga

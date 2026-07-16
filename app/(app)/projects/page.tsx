@@ -1,12 +1,16 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign } from 'lucide-react'
+import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign, X } from 'lucide-react'
+import { useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
 import ExpensesCard from '@/components/ExpensesCard'
+import DataTable, { type DataColumn } from '@/components/DataTable'
+import MultiSelect from '@/components/MultiSelect'
+import { buildFacets, type FacetDef } from '@/lib/facets'
 
 interface Project {
   id: string
@@ -56,6 +60,12 @@ const STATUS_COLORS: Record<string, string> = {
 const fmt = (v: number, currency = 'SGD') =>
   new Intl.NumberFormat('en-SG', { style: 'currency', currency, maximumFractionDigits: 0 }).format(v)
 
+const PROJECT_FACETS: FacetDef<Project>[] = [
+  { key: 'pm', label: 'All PMs', get: r => r.project_manager },
+  { key: 'status', label: 'All statuses', get: r => r.status },
+  { key: 'billing_type', label: 'All billing types', get: r => r.billing_type },
+]
+
 export default function ProjectsPage() {
   const { toast } = useToast()
   const router = useRouter()
@@ -63,6 +73,8 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [facetSel, setFacetSel] = useState<Record<string, string[]>>(
+    () => Object.fromEntries(PROJECT_FACETS.map(f => [f.key, [] as string[]])))
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ProjectForm>(defaultForm())
@@ -86,10 +98,12 @@ export default function ProjectsPage() {
 
   useEffect(() => { reload() }, [reload])
 
-  const filtered = projects.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.project_manager ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  const facets = useMemo(() =>
+    buildFacets(projects, PROJECT_FACETS, facetSel, search,
+      p => [p.name, p.project_manager, p.external_id]),
+    [projects, facetSel, search])
+  const filtered = facets.filtered
+  const hasFilter = !!search || Object.values(facetSel).some(v => v.length)
 
   function openAdd() { setForm(defaultForm()); setEditingId(null); setShowModal(true) }
   function openEdit(p: Project) {
@@ -207,84 +221,105 @@ export default function ProjectsPage() {
 
   const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500'
 
+  const projectColumns: DataColumn<Project>[] = [
+    { key: 'name', label: 'Project', width: 340, sortValue: p => p.name.toLowerCase(),
+      render: p => (
+        <>
+          <p className="font-medium text-slate-800 truncate" title={p.name}>{p.name}</p>
+          {(p.start_date || p.end_date) && (
+            <p className="text-xs text-slate-400 truncate">{p.start_date ?? '?'} → {p.end_date ?? 'ongoing'}</p>
+          )}
+        </>
+      ) },
+    { key: 'pm', label: 'PM', width: 150, sortValue: p => p.project_manager?.toLowerCase() || null,
+      render: p => <span className="text-slate-600 truncate block" title={p.project_manager ?? ''}>{p.project_manager || '—'}</span> },
+    { key: 'status', label: 'Status', width: 110, sortValue: p => p.status,
+      render: p => (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-500'}`}>
+          {p.status}
+        </span>
+      ) },
+    { key: 'billing_type', label: 'Billing', width: 100, sortValue: p => p.billing_type,
+      render: p => <span className="text-slate-500 text-xs">{p.billing_type}</span> },
+    { key: 'contract', label: 'Contract', width: 130, align: 'right', sortValue: p => p.contract_value || null,
+      render: p => <span className="font-mono text-slate-800 font-medium">{p.contract_value > 0 ? fmt(p.contract_value, p.contract_currency) : '—'}</span> },
+    { key: 'start', label: 'Start', width: 110, sortValue: p => p.start_date,
+      render: p => <span className="font-mono text-xs text-slate-500">{p.start_date ?? '—'}</span> },
+    { key: 'end', label: 'End', width: 110, sortValue: p => p.end_date,
+      render: p => <span className="font-mono text-xs text-slate-500">{p.end_date ?? '—'}</span> },
+    { key: 'actions', label: '', width: 200,
+      render: p => (
+        <div className="flex items-center gap-1">
+          <button onClick={() => handleOpenDashboard(p)} title="Open in Dashboard"
+            className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
+            <BarChart2 size={15} />
+          </button>
+          <button onClick={() => openEdit(p)} title="Edit"
+            className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
+            <Edit2 size={14} />
+          </button>
+          <button onClick={() => handleToggleArchive(p)} title={p.status === 'archived' ? 'Unarchive' : 'Archive'}
+            className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50">
+            <Archive size={14} />
+          </button>
+          <button onClick={() => setExpenseProject(p)} title="Add Expenses"
+            className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+            <DollarSign size={14} />
+          </button>
+          <button onClick={() => loadBudget(p)} title="Edit Budget"
+            className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
+            <BarChart2 size={14} />
+          </button>
+          <button onClick={() => setDeleteTarget(p)} title="Delete"
+            className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ) },
+  ]
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects…"
-              className="pl-8 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 w-64" />
-          </div>
-          <span className="text-xs text-slate-400">{filtered.length} projects</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects…"
+            className="w-full pl-8 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
         </div>
+        {PROJECT_FACETS.map(f => (
+          <MultiSelect key={f.key} label={f.label} options={facets.options[f.key]} selected={facetSel[f.key]}
+            onChange={values => setFacetSel(s => ({ ...s, [f.key]: values }))} />
+        ))}
+        {hasFilter && (
+          <button
+            onClick={() => { setSearch(''); setFacetSel(Object.fromEntries(PROJECT_FACETS.map(f => [f.key, []]))) }}
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2"
+          >
+            <X size={12} /> Reset
+          </button>
+        )}
+        <span className="text-xs text-slate-400">{filtered.length} / {projects.length}</span>
         <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">
           <Plus size={14} /> New Project
         </button>
       </div>
 
-      {/* Project Cards */}
+      {/* Project table */}
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600" /></div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <FolderKanban size={32} className="mx-auto mb-3 text-slate-300" />
-          {search ? 'No projects match your search.' : 'No projects yet. Create your first project.'}
+          {hasFilter ? 'No projects match the current filters.' : 'No projects yet. Create your first project.'}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {filtered.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-slate-800 truncate">{p.name}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[p.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                      {p.status}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.billing_type}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-slate-500">
-                    {p.project_manager && <span>PM: <span className="text-slate-700">{p.project_manager}</span></span>}
-                    {p.contract_value > 0 && <span>Contract: <span className="text-slate-700 font-medium">{fmt(p.contract_value, p.contract_currency)}</span></span>}
-                  </div>
-                  {(p.start_date || p.end_date) && (
-                    <p className="text-xs text-slate-400 mt-1">{p.start_date ?? '?'} → {p.end_date ?? 'ongoing'}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 ml-4 flex-shrink-0">
-                  <button onClick={() => handleOpenDashboard(p)} title="Open in Dashboard"
-                    className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
-                    <BarChart2 size={15} />
-                  </button>
-                  <button onClick={() => openEdit(p)} title="Edit"
-                    className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
-                    <Edit2 size={14} />
-                  </button>
-                  <button onClick={() => handleToggleArchive(p)} title={p.status === 'archived' ? 'Unarchive' : 'Archive'}
-                    className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50">
-                    <Archive size={14} />
-                  </button>
-                  <button onClick={() => setExpenseProject(p)} title="Add Expenses"
-                    className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50">
-                    <DollarSign size={14} />
-                  </button>
-                  <button
-                    onClick={() => loadBudget(p)}
-                    title="Edit Budget"
-                    className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50"
-                  >
-                    <BarChart2 size={14} />
-                  </button>
-                  <button onClick={() => setDeleteTarget(p)} title="Delete"
-                    className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <DataTable
+            columns={projectColumns}
+            rows={filtered}
+            rowKey={p => p.id}
+          />
         </div>
       )}
 

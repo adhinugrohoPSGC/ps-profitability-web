@@ -2,8 +2,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X } from 'lucide-react'
 import { useToast } from '@/components/Toast'
+import DataTable, { type DataColumn } from '@/components/DataTable'
+import MultiSelect from '@/components/MultiSelect'
+import { buildFacets, type FacetDef } from '@/lib/facets'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,21 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
   )
 }
 
+const TS_FACETS: FacetDef<TimesheetEntry>[] = [
+  { key: 'consultant', label: 'All consultants', get: r => r.consultant_name },
+  { key: 'phase', label: 'All phases', get: r => r.phase },
+  { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
+]
+
+const EX_FACETS: FacetDef<ExpenseEntry>[] = [
+  { key: 'category', label: 'All categories', get: r => r.category },
+  { key: 'vendor', label: 'All vendors', get: r => r.vendor },
+  { key: 'paid_by', label: 'All paid by', get: r => r.paid_by },
+  { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
+]
+
+const emptySel = (defs: { key: string }[]) => Object.fromEntries(defs.map(d => [d.key, [] as string[]]))
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RecordsPage() {
@@ -61,10 +79,10 @@ export default function RecordsPage() {
   const [timesheet, setTimesheet] = useState<TimesheetEntry[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
   const [loading, setLoading] = useState(false)
-  const [batchFilter, setBatchFilter] = useState('')
-  const [showAllTs, setShowAllTs] = useState(false)
-  const [showAllEx, setShowAllEx] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [search, setSearch] = useState('')
+  const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
+  const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
 
   useEffect(() => {
     if (!selectedProject) { setTimesheet([]); setExpenses([]); return }
@@ -78,17 +96,18 @@ export default function RecordsPage() {
     }).finally(() => setLoading(false))
   }, [selectedProject, refreshKey])
 
-  // Batch options
-  const tsBatches = useMemo(() => [...new Set(timesheet.map(r => r.import_batch_id).filter(Boolean))], [timesheet])
-  const exBatches = useMemo(() => [...new Set(expenses.map(r => r.import_batch_id).filter(Boolean))], [expenses])
+  const tsFacets = useMemo(() =>
+    buildFacets(timesheet, TS_FACETS, tsSel, search,
+      r => [r.consultant_name, r.phase, r.task_description, r.import_batch_id]),
+    [timesheet, tsSel, search])
 
-  const filteredTs = useMemo(() =>
-    batchFilter ? timesheet.filter(r => r.import_batch_id === batchFilter) : timesheet,
-    [timesheet, batchFilter])
+  const exFacets = useMemo(() =>
+    buildFacets(expenses, EX_FACETS, exSel, search,
+      r => [r.category, r.description, r.vendor, r.paid_by, r.currency, r.import_batch_id]),
+    [expenses, exSel, search])
 
-  const filteredEx = useMemo(() =>
-    batchFilter ? expenses.filter(r => r.import_batch_id === batchFilter) : expenses,
-    [expenses, batchFilter])
+  const filteredTs = tsFacets.filtered
+  const filteredEx = exFacets.filtered
 
   // KPIs
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
@@ -96,8 +115,9 @@ export default function RecordsPage() {
   const totalBill = filteredTs.reduce((s, r) => s + (r.billable_value_sgd ?? 0), 0)
   const totalExpSgd = filteredEx.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
 
-  const displayTs = showAllTs ? filteredTs : filteredTs.slice(0, 50)
-  const displayEx = showAllEx ? filteredEx : filteredEx.slice(0, 50)
+  const activeSel = tab === 'timesheet' ? tsSel : exSel
+  const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
+  const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
 
   async function deleteTimesheetRow(id: number) {
     const { error } = await createClient().from('timesheet_entries').delete().eq('id', id)
@@ -113,20 +133,86 @@ export default function RecordsPage() {
     toast('Row deleted', 'success')
   }
 
-  async function deleteBatch(batchId: string, type: 'timesheet' | 'expenses') {
+  async function deleteBatch(batchId: string) {
     if (!confirm(`Delete all rows for batch "${batchId}"?`)) return
-    if (type === 'timesheet') {
-      const { error } = await createClient().from('timesheet_entries').delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
-      if (error) { toast(error.message, 'error'); return }
+    const table = tab === 'timesheet' ? 'timesheet_entries' : 'expense_entries'
+    const { error } = await createClient().from(table).delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
+    if (error) { toast(error.message, 'error'); return }
+    if (tab === 'timesheet') {
       setTimesheet(prev => prev.filter(r => r.import_batch_id !== batchId))
+      setTsSel(s => ({ ...s, batch: [] }))
     } else {
-      const { error } = await createClient().from('expense_entries').delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
-      if (error) { toast(error.message, 'error'); return }
       setExpenses(prev => prev.filter(r => r.import_batch_id !== batchId))
+      setExSel(s => ({ ...s, batch: [] }))
     }
-    if (batchFilter === batchId) setBatchFilter('')
     toast('Batch deleted', 'success')
   }
+
+  function resetFilters() {
+    setSearch('')
+    setTsSel(emptySel(TS_FACETS))
+    setExSel(emptySel(EX_FACETS))
+  }
+
+  const tsColumns: DataColumn<TimesheetEntry>[] = [
+    { key: 'date', label: 'Date', width: 105, sortValue: r => r.entry_date,
+      render: r => <span className="text-slate-600 whitespace-nowrap">{r.entry_date}</span> },
+    { key: 'consultant', label: 'Consultant', width: 150, sortValue: r => r.consultant_name?.toLowerCase() || null,
+      render: r => <span className="font-medium text-slate-800 truncate block" title={r.consultant_name}>{r.consultant_name || '—'}</span> },
+    { key: 'phase', label: 'Phase', width: 120, sortValue: r => r.phase?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.phase}>{r.phase || '—'}</span> },
+    { key: 'task', label: 'Task', width: 200, sortValue: r => r.task_description?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.task_description}>{r.task_description || '—'}</span> },
+    { key: 'hours', label: 'Hrs', width: 70, align: 'right', sortValue: r => r.hours,
+      render: r => <span className="font-mono text-slate-700">{r.hours?.toFixed(1)}</span> },
+    { key: 'cost_rate', label: 'Cost Rate', width: 105, align: 'right', sortValue: r => r.cost_rate_sgd || null,
+      render: r => <span className="font-mono text-slate-500">{r.cost_rate_sgd > 0 ? fmt(r.cost_rate_sgd) : '—'}</span> },
+    { key: 'labour_cost', label: 'Labour Cost', width: 115, align: 'right', sortValue: r => r.labour_cost_sgd || null,
+      render: r => <span className="font-mono text-slate-700 font-medium">{r.labour_cost_sgd > 0 ? fmt(r.labour_cost_sgd) : '—'}</span> },
+    { key: 'bill_rate', label: 'Bill Rate', width: 100, align: 'right', sortValue: r => r.bill_rate_sgd || null,
+      render: r => <span className="font-mono text-slate-500">{r.bill_rate_sgd > 0 ? fmt(r.bill_rate_sgd) : '—'}</span> },
+    { key: 'bill_value', label: 'Bill Value', width: 110, align: 'right', sortValue: r => r.billable_value_sgd || null,
+      render: r => <span className="font-mono text-teal-700 font-medium">{r.billable_value_sgd > 0 ? fmt(r.billable_value_sgd) : '—'}</span> },
+    { key: 'batch', label: 'Batch', width: 110, sortValue: r => r.import_batch_id || null,
+      render: r => <span className="text-xs text-slate-400 truncate block" title={r.import_batch_id}>{r.import_batch_id || '—'}</span> },
+    { key: 'del', label: '', width: 44,
+      render: r => (
+        <button onClick={() => deleteTimesheetRow(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
+          <Trash2 size={13} />
+        </button>
+      ) },
+  ]
+
+  const exColumns: DataColumn<ExpenseEntry>[] = [
+    { key: 'date', label: 'Date', width: 105, sortValue: r => r.expense_date,
+      render: r => <span className="text-slate-600 whitespace-nowrap">{r.expense_date}</span> },
+    { key: 'category', label: 'Category', width: 130, sortValue: r => r.category?.toLowerCase() || null,
+      render: r => <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium truncate max-w-full" title={r.category}>{r.category || '—'}</span> },
+    { key: 'description', label: 'Description', width: 180, sortValue: r => r.description?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.description}>{r.description || '—'}</span> },
+    { key: 'vendor', label: 'Vendor', width: 130, sortValue: r => r.vendor?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.vendor}>{r.vendor || '—'}</span> },
+    { key: 'amount', label: 'Amount', width: 100, align: 'right', sortValue: r => r.amount_native,
+      render: r => <span className="font-mono text-slate-700">{r.amount_native?.toLocaleString()}</span> },
+    { key: 'ccy', label: 'CCY', width: 60, sortValue: r => r.currency || null,
+      render: r => <span className="text-slate-500 text-xs">{r.currency}</span> },
+    { key: 'sgd', label: 'SGD', width: 110, align: 'right', sortValue: r => r.amount_sgd,
+      render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
+    { key: 'paid_by', label: 'Paid By', width: 110, sortValue: r => r.paid_by?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.paid_by}>{r.paid_by || '—'}</span> },
+    { key: 'rcpt', label: 'Rcpt', width: 60, align: 'center', sortValue: r => (r.receipted ? 1 : 0),
+      render: r => r.receipted
+        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
+        : <span className="inline-block w-2 h-2 rounded-full bg-slate-200" /> },
+    { key: 'batch', label: 'Batch', width: 110, sortValue: r => r.import_batch_id || null,
+      render: r => <span className="text-xs text-slate-400 truncate block" title={r.import_batch_id}>{r.import_batch_id || '—'}</span> },
+    { key: 'del', label: '', width: 44,
+      render: r => (
+        <button onClick={() => deleteExpenseRow(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
+          <Trash2 size={13} />
+        </button>
+      ) },
+  ]
 
   if (!selectedProject) {
     return (
@@ -147,37 +233,13 @@ export default function RecordsPage() {
           <h1 className="text-xl font-bold text-slate-800">Records</h1>
           <p className="text-sm text-slate-400 mt-0.5">Timesheet and expense entries for this project</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setRefreshKey(k => k + 1)}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
-          </button>
-        </div>
-        {/* Batch filter */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">Filter batch:</label>
-          <select
-            value={batchFilter}
-            onChange={e => setBatchFilter(e.target.value)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          >
-            <option value="">All batches</option>
-            {(tab === 'timesheet' ? tsBatches : exBatches).map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
-          {batchFilter && (
-            <button
-              onClick={() => deleteBatch(batchFilter, tab)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
-            >
-              <Trash2 size={12} /> Delete batch
-            </button>
-          )}
-        </div>
+        <button
+          onClick={() => setRefreshKey(k => k + 1)}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
       </div>
 
       {/* KPI row */}
@@ -195,18 +257,57 @@ export default function RecordsPage() {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Search + facets */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…' : 'Search category, vendor, description…'}
+            aria-label="Search records"
+            className="w-full text-sm border border-slate-200 rounded-lg pl-8 pr-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+        {tab === 'timesheet'
+          ? TS_FACETS.map(f => (
+              <MultiSelect key={f.key} label={f.label} options={tsFacets.options[f.key]} selected={tsSel[f.key]}
+                onChange={values => setTsSel(s => ({ ...s, [f.key]: values }))} />
+            ))
+          : EX_FACETS.map(f => (
+              <MultiSelect key={f.key} label={f.label} options={exFacets.options[f.key]} selected={exSel[f.key]}
+                onChange={values => setExSel(s => ({ ...s, [f.key]: values }))} />
+            ))}
+        {hasFilter && (
+          <button onClick={resetFilters} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2">
+            <X size={12} /> Reset
+          </button>
+        )}
+        {singleBatch && (
+          <button
+            onClick={() => deleteBatch(singleBatch)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={12} /> Delete batch
+          </button>
+        )}
+        <span className="text-xs text-slate-400 whitespace-nowrap">
+          {tab === 'timesheet' ? `${filteredTs.length} / ${timesheet.length}` : `${filteredEx.length} / ${expenses.length}`}
+        </span>
+      </div>
+
+      {/* Tabs + table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200">
           <button
-            onClick={() => { setTab('timesheet'); setBatchFilter('') }}
+            onClick={() => setTab('timesheet')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'timesheet' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <Clock size={14} /> Timesheet
             <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{timesheet.length}</span>
           </button>
           <button
-            onClick={() => { setTab('expenses'); setBatchFilter('') }}
+            onClick={() => setTab('expenses')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'expenses' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <DollarSign size={14} /> Expenses
@@ -217,125 +318,51 @@ export default function RecordsPage() {
         {loading ? (
           <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
         ) : tab === 'timesheet' ? (
-          <>
-            {filteredTs.length === 0 ? (
-              <div className="py-16 text-center text-sm text-slate-400">No timesheet entries found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200">
-                    <tr>
-                      {['Date', 'Consultant', 'Phase', 'Task', 'Hrs', 'Cost Rate', 'Labour Cost', 'Bill Rate', 'Bill Value', 'Batch', ''].map(h => (
-                        <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap last:w-8">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayTs.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.entry_date}</td>
-                        <td className="px-3 py-2 whitespace-nowrap font-medium text-slate-800">{row.consultant_name || '—'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-500">{row.phase || '—'}</td>
-                        <td className="px-3 py-2 max-w-[180px] truncate text-slate-500" title={row.task_description}>{row.task_description || '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700">{row.hours?.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500">{row.cost_rate_sgd > 0 ? fmt(row.cost_rate_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700 font-medium">{row.labour_cost_sgd > 0 ? fmt(row.labour_cost_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500">{row.bill_rate_sgd > 0 ? fmt(row.bill_rate_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-teal-700 font-medium">{row.billable_value_sgd > 0 ? fmt(row.billable_value_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-slate-400 max-w-[100px] truncate" title={row.import_batch_id}>{row.import_batch_id || '—'}</td>
-                        <td className="px-3 py-2">
-                          <button onClick={() => deleteTimesheetRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {filteredTs.length > 0 && (
-                    <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-semibold text-slate-700">
-                      <tr>
-                        <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Totals</td>
-                        <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
-                        <td />
-                        <td className="px-3 py-2 text-right font-mono">{fmt(totalCost)}</td>
-                        <td />
-                        <td className="px-3 py-2 text-right font-mono text-teal-700">{fmt(totalBill)}</td>
-                        <td colSpan={2} />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-            {filteredTs.length > 50 && (
-              <div className="px-4 py-3 border-t border-slate-100">
-                <button onClick={() => setShowAllTs(v => !v)} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                  {showAllTs ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {filteredTs.length} rows</>}
-                </button>
-              </div>
-            )}
-          </>
+          filteredTs.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              {hasFilter ? 'No timesheet entries match the current filters' : 'No timesheet entries found'}
+            </div>
+          ) : (
+            <DataTable
+              key="timesheet"
+              columns={tsColumns}
+              rows={filteredTs}
+              rowKey={r => r.id}
+              rowCap={50}
+              footer={
+                <tr>
+                  <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Totals</td>
+                  <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
+                  <td />
+                  <td className="px-3 py-2 text-right font-mono">{fmt(totalCost)}</td>
+                  <td />
+                  <td className="px-3 py-2 text-right font-mono text-teal-700">{fmt(totalBill)}</td>
+                  <td colSpan={2} />
+                </tr>
+              }
+            />
+          )
         ) : (
-          <>
-            {filteredEx.length === 0 ? (
-              <div className="py-16 text-center text-sm text-slate-400">No expense entries found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200">
-                    <tr>
-                      {['Date', 'Category', 'Description', 'Vendor', 'Amount', 'CCY', 'SGD', 'Paid By', 'Rcpt', 'Batch', ''].map(h => (
-                        <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap last:w-8">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayEx.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.expense_date}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">{row.category || '—'}</span>
-                        </td>
-                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-500" title={row.description}>{row.description || '—'}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.vendor}>{row.vendor || '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700">{row.amount_native?.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-slate-500 text-xs">{row.currency}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-800 font-medium">{fmt(row.amount_sgd)}</td>
-                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{row.paid_by || '—'}</td>
-                        <td className="px-3 py-2 text-center">
-                          {row.receipted
-                            ? <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
-                            : <span className="inline-block w-2 h-2 rounded-full bg-slate-200" />}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-slate-400 max-w-[100px] truncate" title={row.import_batch_id}>{row.import_batch_id || '—'}</td>
-                        <td className="px-3 py-2">
-                          <button onClick={() => deleteExpenseRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {filteredEx.length > 0 && (
-                    <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-semibold text-slate-700">
-                      <tr>
-                        <td colSpan={6} className="px-3 py-2 text-right text-slate-500">Total (SGD)</td>
-                        <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
-                        <td colSpan={4} />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-            {filteredEx.length > 50 && (
-              <div className="px-4 py-3 border-t border-slate-100">
-                <button onClick={() => setShowAllEx(v => !v)} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                  {showAllEx ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {filteredEx.length} rows</>}
-                </button>
-              </div>
-            )}
-          </>
+          filteredEx.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              {hasFilter ? 'No expense entries match the current filters' : 'No expense entries found'}
+            </div>
+          ) : (
+            <DataTable
+              key="expenses"
+              columns={exColumns}
+              rows={filteredEx}
+              rowKey={r => r.id}
+              rowCap={50}
+              footer={
+                <tr>
+                  <td colSpan={6} className="px-3 py-2 text-right text-slate-500">Total (SGD)</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
+                  <td colSpan={4} />
+                </tr>
+              }
+            />
+          )
         )}
       </div>
 

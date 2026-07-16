@@ -22,7 +22,6 @@ interface Project {
   contract_currency: string
   billing_type: string
   phases: string
-  overhead_rate_pct: number
   status: string
   notes: string | null
   external_id: string | null
@@ -46,7 +45,7 @@ function defaultForm(): ProjectForm {
     start_date: '', end_date: '', contract_value: 0,
     contract_currency: 'SGD', billing_type: 'Fixed Fee',
     phases: 'Discovery,Design,Build,Testing,Go-Live',
-    overhead_rate_pct: 12, status: 'active', notes: '', external_id: null,
+    status: 'active', notes: '', external_id: null,
   }
 }
 
@@ -111,7 +110,7 @@ export default function ProjectsPage() {
       name: p.name, project_manager: p.project_manager ?? '',
       start_date: p.start_date ?? '', end_date: p.end_date ?? '',
       contract_value: p.contract_value, contract_currency: p.contract_currency,
-      billing_type: p.billing_type, phases: p.phases, overhead_rate_pct: p.overhead_rate_pct,
+      billing_type: p.billing_type, phases: p.phases,
       status: p.status, notes: p.notes ?? '', external_id: p.external_id ?? null,
     })
     setEditingId(p.id)
@@ -358,10 +357,6 @@ export default function ProjectsPage() {
               <select value={form.billing_type} onChange={e => setForm(p => ({ ...p, billing_type: e.target.value }))} className={inputCls}>
                 {['Fixed Fee', 'T&M', 'Retainer'].map(t => <option key={t}>{t}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Overhead Rate %</label>
-              <input type="number" min="0" max="100" step="0.1" value={form.overhead_rate_pct} onChange={e => setForm(p => ({ ...p, overhead_rate_pct: parseFloat(e.target.value) || 0 }))} className={inputCls} />
             </div>
           </div>
           <div>

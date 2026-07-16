@@ -258,7 +258,6 @@ export function generateProjectInfoTemplate(): ArrayBuffer {
     ['Contract Currency', 'SGD'],
     ['Billing Type', 'Fixed Fee'],
     ['Phases', 'Discovery,Design,Build,Testing,Go-Live'],
-    ['Overhead Rate %', 15],
     ['Notes', 'NetSuite ERP implementation project'],
   ]
   const infoWs = XLSX.utils.aoa_to_sheet(infoData)

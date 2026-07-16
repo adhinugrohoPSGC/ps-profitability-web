@@ -11,6 +11,8 @@ import { useProject } from '@/contexts/ProjectContext'
 interface Project {
   id: string; name: string; client_name: string; contract_value: number
   contract_currency: string; billing_type: string; overhead_rate_pct: number
+  project_manager: string | null; start_date: string | null; end_date: string | null
+  status: string; notes: string | null
 }
 interface TimesheetEntry {
   id: number; consultant_name: string; phase: string; hours: number
@@ -58,24 +60,24 @@ export default function DashboardPage() {
 
   const financials = useMemo(() => {
     const labourCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
-    const directExpenses = expenses.filter(e => e.category?.toLowerCase() !== 'overhead').reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-    const overheadLogged = expenses.filter(e => e.category?.toLowerCase() === 'overhead').reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-    const overheadRatePct = project?.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
-    const overhead = Math.max(overheadLogged, labourCost * (overheadRatePct / 100))
-    const totalCost = labourCost + directExpenses + overhead
+    const directExpenses = expenses.reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
+    const sgaRatePct = project?.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
+    // SG&A is deducted directly as project cost: % of contract value
+    const sga = (project?.contract_value ?? 0) * (sgaRatePct / 100)
+    const totalCost = labourCost + directExpenses + sga
     const billableValue = timesheet.reduce((s, e) => s + (e.billable_value_sgd ?? 0), 0)
     const revenue = project?.billing_type === 'T&M' ? billableValue : (project?.contract_value ?? 0)
     const grossProfit = revenue - totalCost
     const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0
-    return { labourCost, directExpenses, overhead, totalCost, revenue, grossProfit, grossMarginPct }
+    return { labourCost, directExpenses, sga, totalCost, revenue, grossProfit, grossMarginPct }
   }, [timesheet, expenses, project, settings])
 
   const donutData = useMemo(() => {
-    const { labourCost, directExpenses, overhead } = financials
+    const { labourCost, directExpenses, sga } = financials
     return [
       { name: 'Labour Cost', value: labourCost },
       { name: 'Direct Expenses', value: directExpenses },
-      { name: 'Overhead', value: overhead },
+      { name: 'SG&A', value: sga },
     ].filter(d => d.value > 0)
   }, [financials])
 
@@ -125,15 +127,44 @@ export default function DashboardPage() {
     </div>
   )
 
-  const { labourCost, directExpenses, overhead, totalCost, revenue, grossProfit, grossMarginPct } = financials
+  const { labourCost, directExpenses, sga, totalCost, revenue, grossProfit, grossMarginPct } = financials
+
+  const fmtDate = (d: string | null | undefined) =>
+    d ? new Date(d).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+
+  const projectInfo: [string, React.ReactNode][] = [
+    ['Project Name', project?.name ?? '—'],
+    ['Client Name', project?.client_name || '—'],
+    ['Project Manager', project?.project_manager || '—'],
+    ['Kick Off Date', fmtDate(project?.start_date)],
+    ['Go Live Date', fmtDate(project?.end_date)],
+    ['Billing Type', project?.billing_type ?? '—'],
+    ['Status', project?.status
+      ? <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 capitalize">{project.status}</span>
+      : '—'],
+    ['Remarks', project?.notes || '—'],
+  ]
 
   return (
     <div className="space-y-6">
+      {/* Project Information */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">Project Information</h3>
+        <div className="grid grid-cols-4 gap-x-6 gap-y-4">
+          {projectInfo.map(([label, value]) => (
+            <div key={label} className={label === 'Remarks' ? 'col-span-4' : ''}>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{label}</p>
+              <div className="text-sm text-slate-800 font-medium">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Total Revenue', value: fmt(revenue), sub: project?.billing_type ?? 'Fixed Fee', icon: DollarSign, subClass: 'bg-teal-50 text-teal-700' },
-          { label: 'Total Cost', value: fmt(totalCost), sub: 'Labour + Expenses + Overhead', icon: TrendingDown, subClass: 'text-slate-400' },
+          { label: 'Total Cost', value: fmt(totalCost), sub: 'Labour + Expenses + SG&A', icon: TrendingDown, subClass: 'text-slate-400' },
           { label: 'Gross Profit', value: fmt(grossProfit), sub: '', icon: TrendingUp, valueClass: grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500' },
           { label: 'Gross Margin', value: fmtPct(grossMarginPct), sub: grossMarginPct >= 30 ? 'Healthy' : grossMarginPct >= 15 ? 'Acceptable' : 'Below target', icon: BarChart2, valueClass: marginColor(grossMarginPct) },
         ].map(({ label, value, sub, icon: Icon, subClass, valueClass }) => (
@@ -163,7 +194,7 @@ export default function DashboardPage() {
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-600">
-            {[['bg-teal-600', 'Labour', labourCost], ['bg-blue-500', 'Expenses', directExpenses], ['bg-amber-500', 'Overhead', overhead]].map(([bg, lbl, val]) => (
+            {[['bg-teal-600', 'Labour', labourCost], ['bg-blue-500', 'Expenses', directExpenses], ['bg-amber-500', 'SG&A', sga]].map(([bg, lbl, val]) => (
               <div key={String(lbl)} className="flex items-center gap-1">
                 <span className={`w-2.5 h-2.5 rounded-full ${bg} inline-block`} />
                 <span>{lbl} {fmt(Number(val))}</span>

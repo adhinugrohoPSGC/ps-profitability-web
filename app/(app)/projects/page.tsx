@@ -309,11 +309,11 @@ export default function ProjectsPage() {
               <input value={form.project_manager ?? ''} onChange={e => setForm(p => ({ ...p, project_manager: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Kick Off Date</label>
               <input type="date" value={form.start_date ?? ''} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Go Live Date</label>
               <input type="date" value={form.end_date ?? ''} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} className={inputCls} />
             </div>
             <div>
@@ -333,7 +333,7 @@ export default function ProjectsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Overhead Rate %</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">SG&amp;A %</label>
               <input type="number" min="0" max="100" step="0.1" value={form.overhead_rate_pct} onChange={e => setForm(p => ({ ...p, overhead_rate_pct: parseFloat(e.target.value) || 0 }))} className={inputCls} />
             </div>
           </div>
@@ -352,7 +352,7 @@ export default function ProjectsPage() {
             <input value={form.external_id ?? ''} onChange={e => setForm(p => ({ ...p, external_id: e.target.value }))} placeholder="e.g. 90168316816" className={inputCls} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Remarks</label>
             <input value={form.notes ?? ''} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className={inputCls} />
           </div>
           <div className="flex justify-end gap-2 pt-2">

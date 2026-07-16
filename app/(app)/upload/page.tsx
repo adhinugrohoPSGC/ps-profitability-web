@@ -598,7 +598,7 @@ function ProjectInfoCard({ onProjectImported }: { onProjectImported?: (id: strin
     ['Contract Value', data.contract_value ? fmt(data.contract_value, data.contract_currency || 'USD') : '—'],
     ['Billing Type', data.billing_type],
     ['Phases', data.phases],
-    ['Overhead Rate', data.overhead_rate_pct ? `${data.overhead_rate_pct}%` : '—'],
+    ['SG&A %', data.overhead_rate_pct ? `${data.overhead_rate_pct}%` : '—'],
     ['Notes', data.notes || '—'],
   ] : []
 

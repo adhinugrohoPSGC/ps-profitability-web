@@ -203,7 +203,7 @@ export function parseProjectInfoXLS(buffer: ArrayBuffer): ProjectInfoData {
     contract_currency: get('Contract Currency', 'currency') || 'USD',
     billing_type: get('Billing Type', 'billing_type', 'type') || 'Fixed Fee',
     phases: get('Phases', 'phases'),
-    overhead_rate_pct: toNum(get('Overhead Rate %', 'overhead_rate_pct', 'overhead')),
+    overhead_rate_pct: toNum(get('SG&A %', 'sga_pct', 'Overhead Rate %', 'overhead_rate_pct', 'overhead')),
     notes: get('Notes', 'notes'),
     budget_lines: budgetLines,
   }
@@ -261,7 +261,7 @@ export function generateProjectInfoTemplate(): ArrayBuffer {
     ['Contract Currency', 'SGD'],
     ['Billing Type', 'Fixed Fee'],
     ['Phases', 'Discovery,Design,Build,Testing,Go-Live'],
-    ['Overhead Rate %', 15],
+    ['SG&A %', 15],
     ['Notes', 'NetSuite ERP implementation project'],
   ]
   const infoWs = XLSX.utils.aoa_to_sheet(infoData)

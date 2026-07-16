@@ -257,39 +257,20 @@ export default function SettingsPage() {
         </Field>
       </Section>
 
-      {/* ── Overhead ─────────────────────────────────────────────────────────── */}
-      <Section icon={Gauge} title="Overhead">
-        <Field label="Overhead Method" hint="How overhead is applied to projects">
-          <div className="flex flex-col gap-1.5">
-            {([
-              ['logged', 'Logged Expenses — use overhead expense entries only'],
-              ['computed', 'Computed % — apply % of labour cost as overhead'],
-              ['both', 'Both — MAX of logged expenses and computed %'],
-            ] as const).map(([v, l]) => (
-              <label key={v} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                <input type="radio" name="overheadMethod" value={v}
-                  checked={settings.overhead_method === v}
-                  onChange={() => update('overhead_method', v)}
-                  className="accent-teal-600" />
-                {l}
-              </label>
-            ))}
+      {/* ── SG&A ─────────────────────────────────────────────────────────────── */}
+      <Section icon={Gauge} title="SG&A">
+        <Field label="Default SG&A %" hint="% of contract value deducted directly as project cost (per-project rate overrides this)">
+          <div className="flex items-center gap-2">
+            <input
+              type="number" min="0" max="100" step="0.1"
+              value={settings.overhead_rate_pct}
+              onChange={e => update('overhead_rate_pct', e.target.value)}
+              className="w-24 border border-slate-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+            <span className="text-sm text-slate-500">%</span>
+            <SavedBadge k="overhead_rate_pct" />
           </div>
         </Field>
-        {(settings.overhead_method === 'computed' || settings.overhead_method === 'both') && (
-          <Field label="Default Rate %" hint="Applied to labour cost per project">
-            <div className="flex items-center gap-2">
-              <input
-                type="number" min="0" max="100" step="0.1"
-                value={settings.overhead_rate_pct}
-                onChange={e => update('overhead_rate_pct', e.target.value)}
-                className="w-24 border border-slate-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              <span className="text-sm text-slate-500">%</span>
-              <SavedBadge k="overhead_rate_pct" />
-            </div>
-          </Field>
-        )}
       </Section>
 
       {/* ── ClickUp Integration ──────────────────────────────────────────────── */}

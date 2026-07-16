@@ -148,15 +148,11 @@ async function generateReport(opts: {
 
   // Financial calcs
   const labourCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
-  const directExpenses = expenses
-    .filter(e => e.category?.toLowerCase() !== 'overhead')
-    .reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-  const overheadLogged = expenses
-    .filter(e => e.category?.toLowerCase() === 'overhead')
-    .reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-  const overheadRatePct = project.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
-  const overhead = Math.max(overheadLogged, labourCost * (overheadRatePct / 100))
-  const totalCost = labourCost + directExpenses + overhead
+  const directExpenses = expenses.reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
+  const sgaRatePct = project.overhead_rate_pct ?? parseFloat(settings.overhead_rate_pct ?? '0')
+  // SG&A is deducted directly as project cost: % of contract value
+  const sga = (project.contract_value ?? 0) * (sgaRatePct / 100)
+  const totalCost = labourCost + directExpenses + sga
   const billableValue = timesheet.reduce((s, e) => s + (e.billable_value_sgd ?? 0), 0)
   const revenue = project.billing_type === 'T&M' ? billableValue : project.contract_value
   const grossProfit = revenue - totalCost
@@ -203,7 +199,7 @@ async function generateReport(opts: {
       ['Contract Value', revenue],
       ['Labour Cost', labourCost],
       ['Direct Expenses', directExpenses],
-      ['Overhead', overhead],
+      ['SG&A', sga],
       ['Total Cost', totalCost],
       ['Gross Profit', grossProfit],
     ]
@@ -418,28 +414,20 @@ async function generateReport(opts: {
     }
   }
 
-  // ── Sheet 6: Overhead ──────────────────────────────────────────────────────
+  // ── Sheet 6: SG&A ──────────────────────────────────────────────────────────
   if (sections.overheadCalc) {
-    const ws = wb.addWorksheet('Overhead')
+    const ws = wb.addWorksheet('SGA')
     ws.columns = [{ key: 'a', width: 30 }, { key: 'b', width: 20 }]
 
-    headerRow(ws, ['Overhead Calculation', ''])
+    headerRow(ws, ['SG&A Calculation', ''])
     ws.mergeCells(`A1:B1`)
 
-    const overheadComputed = labourCost * (overheadRatePct / 100)
-    ws.addRow(['Method', settings.overhead_method ?? 'computed'])
-    ws.addRow(['Rate Applied', `${overheadRatePct}%`])
+    ws.addRow(['Rate Applied', `${sgaRatePct}%`])
 
-    const labourRow = ws.addRow(['Labour Cost Base', labourCost])
-    currencyFmt(labourRow.getCell(2))
+    const baseRow = ws.addRow(['Contract Value Base', project.contract_value ?? 0])
+    currencyFmt(baseRow.getCell(2))
 
-    const computedRow = ws.addRow(['Computed Overhead (rate × labour)', overheadComputed])
-    currencyFmt(computedRow.getCell(2))
-
-    const loggedRow = ws.addRow(['Logged Overhead (from expenses)', overheadLogged])
-    currencyFmt(loggedRow.getCell(2))
-
-    const usedRow = ws.addRow(['Overhead Used (MAX of above)', overhead])
+    const usedRow = ws.addRow(['SG&A (rate × contract value)', sga])
     usedRow.font = { bold: true }
     usedRow.getCell(2).fill = solidFill(LIGHT_TEAL)
     currencyFmt(usedRow.getCell(2))
@@ -546,7 +534,7 @@ export default function ReportsPage() {
     { key: 'labourByConsultant', label: 'Labour Cost by Consultant' },
     { key: 'labourByPhase', label: 'Labour Cost by Phase' },
     { key: 'expenseBreakdown', label: 'Expense Breakdown' },
-    { key: 'overheadCalc', label: 'Overhead Calculation' },
+    { key: 'overheadCalc', label: 'SG&A Calculation' },
     { key: 'budgetVsActual', label: 'Budget vs Actual' },
     { key: 'kpiSummary', label: 'KPI Summary' },
     { key: 'rateCard', label: 'Rate Card (optional)' },
@@ -558,7 +546,7 @@ export default function ReportsPage() {
     sections.labourByConsultant ? '3. Labour by Consultant' : null,
     sections.labourByPhase ? '4. Labour by Phase' : null,
     sections.expenseBreakdown ? '5. Expenses' : null,
-    sections.overheadCalc ? '6. Overhead' : null,
+    sections.overheadCalc ? '6. SG&A' : null,
     sections.budgetVsActual ? '7. Budget vs Actual' : null,
     sections.rateCard ? '8. Rate Card' : null,
   ].filter(Boolean) as string[]

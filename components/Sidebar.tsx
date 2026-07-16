@@ -3,21 +3,25 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Upload, FolderKanban, Users,
-  FileBarChart2, Settings, TrendingUp, ClipboardList,
+  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck,
 } from 'lucide-react'
 
 const NAV = [
-  { href: '/dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
-  { href: '/upload',     label: 'Upload Templates',  icon: Upload },
-  { href: '/records',    label: 'Records',           icon: ClipboardList },
-  { href: '/projects',   label: 'Projects',          icon: FolderKanban },
-  { href: '/rate-card',  label: 'Rate Card',         icon: Users },
-  { href: '/reports',    label: 'Reports',           icon: FileBarChart2 },
-  { href: '/settings',   label: 'Settings',          icon: Settings },
+  { key: 'dashboard', href: '/dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
+  { key: 'upload',    href: '/upload',     label: 'Upload Templates',  icon: Upload },
+  { key: 'records',   href: '/records',    label: 'Records',           icon: ClipboardList },
+  { key: 'projects',  href: '/projects',   label: 'Projects',          icon: FolderKanban },
+  { key: 'rate-card', href: '/rate-card',  label: 'Rate Card',         icon: Users },
+  { key: 'reports',   href: '/reports',    label: 'Reports',           icon: FileBarChart2 },
+  { key: 'settings',  href: '/settings',   label: 'Settings',          icon: Settings },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ allowedMenus, showUsers = false }: {
+  allowedMenus?: string[] // undefined = all menus (admin)
+  showUsers?: boolean
+}) {
   const pathname = usePathname()
+  const nav = allowedMenus ? NAV.filter(item => allowedMenus.includes(item.key)) : NAV
 
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar flex flex-col">
@@ -33,7 +37,7 @@ export default function Sidebar() {
         </div>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href
           return (
             <Link key={href} href={href}
@@ -46,6 +50,18 @@ export default function Sidebar() {
             </Link>
           )
         })}
+        {showUsers && (
+          <Link href="/admin/users"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname === '/admin/users'
+                ? 'bg-accent text-white'
+                : 'text-white/60 hover:bg-sidebar-hover hover:text-white'
+            }`}
+          >
+            <ShieldCheck size={16} />
+            <span className="flex-1">Admin: Users</span>
+          </Link>
+        )}
       </nav>
       <div className="px-5 py-3 border-t border-white/10">
         <p className="text-white/30 text-xs">v2.0.0 · Web</p>

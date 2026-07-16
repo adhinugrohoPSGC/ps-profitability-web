@@ -26,6 +26,7 @@ export async function proxy(request: NextRequest) {
 
   const isPublic =
     pathname === '/login' ||
+    pathname === '/register' ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next')
 
@@ -34,6 +35,28 @@ export async function proxy(request: NextRequest) {
   if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // Approval gate: only approved users may enter the app
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('status, role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || profile.status !== 'approved') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.search = 'msg=pending'
+    return NextResponse.redirect(url)
+  }
+
+  // /admin requires the admin role
+  if (pathname.startsWith('/admin') && profile.role !== 'admin') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    url.search = ''
     return NextResponse.redirect(url)
   }
 

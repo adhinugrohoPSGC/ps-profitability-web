@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { createAuthClient } from '@/lib/supabase/auth-client'
 import { useProject } from '@/contexts/ProjectContext'
 import { ChevronDown, LogOut } from 'lucide-react'
 
@@ -24,10 +25,9 @@ export default function TopBar() {
   const [userName, setUserName] = useState('')
 
   useEffect(() => {
-    const sb = createClient()
-    sb.from('projects').select('id, name').order('created_at', { ascending: false })
+    createClient().from('projects').select('id, name').order('created_at', { ascending: false })
       .then(({ data }) => setProjects(data ?? []))
-    sb.auth.getUser().then(({ data }) => {
+    createAuthClient().auth.getUser().then(({ data }) => {
       if (data.user) {
         setUserName(
           data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || ''
@@ -37,7 +37,7 @@ export default function TopBar() {
   }, [])
 
   async function handleLogout() {
-    await createClient().auth.signOut()
+    await createAuthClient().auth.signOut()
     router.push('/login')
     router.refresh()
   }

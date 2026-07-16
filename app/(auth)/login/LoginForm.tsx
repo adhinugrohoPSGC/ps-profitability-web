@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { createAuthClient } from '@/lib/supabase/auth-client'
 import { TrendingUp, Loader2, AlertCircle } from 'lucide-react'
 
 export function LoginForm() {
@@ -23,7 +23,7 @@ export function LoginForm() {
     e.preventDefault()
     setLoading(true); setError('')
     try {
-      const supabase = createClient()
+      const supabase = createAuthClient()
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) { setError('Invalid email or password.'); return }
 

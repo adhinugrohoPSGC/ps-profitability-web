@@ -257,7 +257,7 @@ export default function SettingsPage() {
 
       {/* ── SG&A ─────────────────────────────────────────────────────────────── */}
       <Section icon={Gauge} title="SG&A">
-        <Field label="SG&A Rate %" hint="Deducted as project cost: rate × labour cost. Applies to all projects.">
+        <Field label="SG&A Rate %" hint="Deducted as project cost: rate × total revenue. Applies to all projects.">
           <div className="flex items-center gap-2">
             <input
               type="number" min="0" max="100" step="0.1"

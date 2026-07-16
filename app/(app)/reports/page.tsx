@@ -151,10 +151,10 @@ async function generateReport(opts: {
     .reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
   const parsedSgaRate = parseFloat(settings.overhead_rate_pct ?? '')
   const sgaRatePct = isNaN(parsedSgaRate) ? 30 : parsedSgaRate
-  const sga = labourCost * (sgaRatePct / 100)
-  const totalCost = labourCost + directExpenses + sga
   const billableValue = timesheet.reduce((s, e) => s + (e.billable_value_sgd ?? 0), 0)
   const revenue = project.billing_type === 'T&M' ? billableValue : project.contract_value
+  const sga = revenue * (sgaRatePct / 100)
+  const totalCost = labourCost + directExpenses + sga
   const grossProfit = revenue - totalCost
   const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0
 
@@ -423,10 +423,10 @@ async function generateReport(opts: {
 
     ws.addRow(['Rate Applied', `${sgaRatePct}%`])
 
-    const labourRow = ws.addRow(['Labour Cost Base', labourCost])
-    currencyFmt(labourRow.getCell(2))
+    const revenueRow = ws.addRow(['Revenue Base', revenue])
+    currencyFmt(revenueRow.getCell(2))
 
-    const sgaRow = ws.addRow(['SG&A (rate × labour cost)', sga])
+    const sgaRow = ws.addRow(['SG&A (rate × revenue)', sga])
     sgaRow.font = { bold: true }
     sgaRow.getCell(2).fill = solidFill(LIGHT_TEAL)
     currencyFmt(sgaRow.getCell(2))

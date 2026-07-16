@@ -63,10 +63,10 @@ export default function DashboardPage() {
     const directExpenses = expenses.filter(e => e.category?.toLowerCase() !== 'overhead').reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
     const parsedRate = parseFloat(settings.overhead_rate_pct ?? '')
     const sgaRatePct = isNaN(parsedRate) ? DEFAULT_SGA_RATE_PCT : parsedRate
-    const sga = labourCost * (sgaRatePct / 100)
-    const totalCost = labourCost + directExpenses + sga
     const billableValue = timesheet.reduce((s, e) => s + (e.billable_value_sgd ?? 0), 0)
     const revenue = project?.billing_type === 'T&M' ? billableValue : (project?.contract_value ?? 0)
+    const sga = revenue * (sgaRatePct / 100)
+    const totalCost = labourCost + directExpenses + sga
     const grossProfit = revenue - totalCost
     const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0
     return { labourCost, directExpenses, sga, sgaRatePct, totalCost, revenue, grossProfit, grossMarginPct }
@@ -135,7 +135,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Total Revenue', value: fmt(revenue), sub: project?.billing_type ?? 'Fixed Fee', icon: DollarSign, subClass: 'bg-teal-50 text-teal-700' },
-          { label: 'Total Cost', value: fmt(totalCost), sub: `Labour + Expenses + SG&A (${sgaRatePct}%)`, icon: TrendingDown, subClass: 'text-slate-400' },
+          { label: 'Total Cost', value: fmt(totalCost), sub: `Labour + Expenses + SG&A (${sgaRatePct}% of revenue)`, icon: TrendingDown, subClass: 'text-slate-400' },
           { label: 'Gross Profit', value: fmt(grossProfit), sub: '', icon: TrendingUp, valueClass: grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500' },
           { label: 'Gross Margin', value: fmtPct(grossMarginPct), sub: grossMarginPct >= 30 ? 'Healthy' : grossMarginPct >= 15 ? 'Acceptable' : 'Below target', icon: BarChart2, valueClass: marginColor(grossMarginPct) },
         ].map(({ label, value, sub, icon: Icon, subClass, valueClass }) => (

@@ -17,7 +17,6 @@ interface TimesheetEntry {
   cost_rate_sgd: number; labour_cost_sgd: number; bill_rate_sgd: number; billable_value_sgd: number
 }
 interface ExpenseEntry { id: number; category: string; amount_sgd: number }
-interface BudgetLine { id: number; phase: string; budgeted_hours: number; budgeted_cost: number; budgeted_revenue: number }
 interface Settings { overhead_rate_pct?: string; [key: string]: string | undefined }
 
 const DEFAULT_SGA_RATE_PCT = 30
@@ -25,7 +24,6 @@ const DEFAULT_SGA_RATE_PCT = 30
 const fmt = (v: number) => new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 0 }).format(v)
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
 function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct >= 15 ? 'text-amber-500' : 'text-red-500' }
-function variancePctColor(pct: number) { return pct <= 0 ? 'bg-emerald-50 text-emerald-700' : pct <= 25 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700' }
 const COST_COLORS = { labour: '#0d9488', expenses: '#3b82f6', sga: '#f59e0b' }
 
 export default function DashboardPage() {
@@ -33,25 +31,22 @@ export default function DashboardPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [timesheet, setTimesheet] = useState<TimesheetEntry[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
-  const [budget, setBudget] = useState<BudgetLine[]>([])
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!selectedProject) { setProject(null); setTimesheet([]); setExpenses([]); setBudget([]); return }
+    if (!selectedProject) { setProject(null); setTimesheet([]); setExpenses([]); return }
     setLoading(true)
     const supabase = createClient()
     Promise.all([
       supabase.from('projects').select('*').eq('id', selectedProject).single(),
       supabase.from('timesheet_entries').select('*').eq('project_id', selectedProject),
       supabase.from('expense_entries').select('*').eq('project_id', selectedProject),
-      supabase.from('project_budget').select('*').eq('project_id', selectedProject),
       supabase.from('user_settings').select('key, value'),
-    ]).then(([proj, ts, exp, bud, sett]) => {
+    ]).then(([proj, ts, exp, sett]) => {
       setProject(proj.data as Project)
       setTimesheet((ts.data as TimesheetEntry[]) ?? [])
       setExpenses((exp.data as ExpenseEntry[]) ?? [])
-      setBudget((bud.data as BudgetLine[]) ?? [])
       const settMap: Settings = {}
       ;((sett.data ?? []) as { key: string; value: string }[]).forEach(({ key, value }) => { settMap[key] = value ?? undefined })
       setSettings(settMap)
@@ -93,17 +88,6 @@ export default function DashboardPage() {
       .sort((a, b) => b.cost - a.cost)
       .map(c => ({ ...c, shortName: c.name.split(' ').slice(-1)[0], cost: Math.round(c.cost) }))
   }, [timesheet])
-
-  const budgetTotals = useMemo(() => {
-    const actualHours = timesheet.reduce((s, e) => s + (e.hours ?? 0), 0)
-    const actualCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
-    const budgetedHours = budget.reduce((s, b) => s + (b.budgeted_hours ?? 0), 0)
-    const budgetedCost = budget.reduce((s, b) => s + (b.budgeted_cost ?? 0), 0)
-    const costVariance = actualCost - budgetedCost
-    const hrsVariance = actualHours - budgetedHours
-    const variancePct = budgetedCost > 0 ? (costVariance / budgetedCost) * 100 : 0
-    return { budgetedHours, actualHours, hrsVariance, budgetedCost, actualCost, costVariance, variancePct }
-  }, [budget, timesheet])
 
   if (!selectedProject) return (
     <div className="flex flex-col items-center justify-center h-full text-center py-24">
@@ -187,44 +171,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Budget vs Actual — single totals row */}
-      {(budgetTotals.budgetedCost > 0 || budgetTotals.actualCost > 0) && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Budget vs Actual</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
-                  {['Budg. Hrs', 'Act. Hrs', 'Hrs Var', 'Budg. Cost', 'Act. Cost', 'Cost Var', 'Var %'].map(h => (
-                    <th key={h} className="text-right px-3 py-2 font-medium first:text-left">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="font-semibold text-slate-800">
-                  <td className="text-right px-3 py-3">{budgetTotals.budgetedHours.toFixed(1)}</td>
-                  <td className="text-right px-3 py-3">{budgetTotals.actualHours.toFixed(1)}</td>
-                  <td className={`text-right px-3 py-3 ${budgetTotals.hrsVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {budgetTotals.hrsVariance > 0 ? '+' : ''}{budgetTotals.hrsVariance.toFixed(1)}
-                  </td>
-                  <td className="text-right px-3 py-3">{fmt(budgetTotals.budgetedCost)}</td>
-                  <td className="text-right px-3 py-3">{fmt(budgetTotals.actualCost)}</td>
-                  <td className={`text-right px-3 py-3 ${budgetTotals.costVariance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {budgetTotals.costVariance > 0 ? '+' : ''}{fmt(budgetTotals.costVariance)}
-                  </td>
-                  <td className="text-right px-3 py-3">
-                    {budgetTotals.budgetedCost > 0
-                      ? <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${variancePctColor(budgetTotals.variancePct)}`}>
-                          {budgetTotals.variancePct > 0 ? '+' : ''}{fmtPct(budgetTotals.variancePct)}
-                        </span>
-                      : '—'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

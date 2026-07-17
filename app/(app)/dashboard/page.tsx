@@ -26,7 +26,7 @@ const fmt = (v: number) => new Intl.NumberFormat('en-SG', { style: 'currency', c
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
 function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct >= 15 ? 'text-amber-500' : 'text-red-500' }
 function variancePctColor(pct: number) { return pct <= 0 ? 'bg-emerald-50 text-emerald-700' : pct <= 25 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700' }
-const DONUT_COLORS = ['#0d9488', '#3b82f6', '#f59e0b']
+const COST_COLORS = { labour: '#0d9488', expenses: '#3b82f6', sga: '#f59e0b' }
 
 export default function DashboardPage() {
   const { selectedProject } = useProject()
@@ -75,9 +75,9 @@ export default function DashboardPage() {
   const donutData = useMemo(() => {
     const { labourCost, directExpenses, sga } = financials
     return [
-      { name: 'Labour Cost', value: labourCost },
-      { name: 'Direct Expenses', value: directExpenses },
-      { name: 'SG&A', value: sga },
+      { name: 'Labour Cost', value: labourCost, color: COST_COLORS.labour },
+      { name: 'Direct Expenses', value: directExpenses, color: COST_COLORS.expenses },
+      { name: 'SG&A', value: sga, color: COST_COLORS.sga },
     ].filter(d => d.value > 0)
   }, [financials])
 
@@ -157,7 +157,7 @@ export default function DashboardPage() {
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={donutData} cx="50%" cy="45%" innerRadius={70} outerRadius={100} paddingAngle={3} dataKey="value" labelLine={false}>
-                {donutData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
+                {donutData.map(d => <Cell key={d.name} fill={d.color} />)}
               </Pie>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <ReTooltip formatter={(v: any) => fmt(Number(v))} />
@@ -181,11 +181,6 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="shortName" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <ReTooltip
-                formatter={(v: any, _n: any, p: any) => [`${fmt(Number(v))} (${(p?.payload?.hours ?? 0).toFixed(1)} hrs)`, 'Labour Cost']}
-                labelFormatter={(l: any) => consultantData.find(c => c.shortName === String(l))?.name ?? String(l)}
-              />
               <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

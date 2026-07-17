@@ -755,37 +755,24 @@ export default function UploadPage() {
           {selectedProject ? (
             <>
               <CheckCircle size={16} className="text-blue-500 flex-shrink-0" />
-              <p className="text-sm text-blue-800">
+              <p className="text-sm text-blue-800 truncate" title={selectedName ?? selectedProject}>
                 Importing into <strong>{selectedName ?? selectedProject}</strong>
               </p>
             </>
           ) : (
             <>
               <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
-              <p className="text-sm text-amber-800">Select a project to import data into</p>
+              <p className="text-sm text-amber-800">Select a project in the top bar to import data into</p>
             </>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-xs text-slate-500 whitespace-nowrap">Project:</label>
-          <select
-            value={selectedProject ?? ''}
-            onChange={e => setSelectedProject(e.target.value || null)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option value="">— Choose project —</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button
-            onClick={loadProjects}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded hover:bg-white"
-            title="Refresh project list"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
+        <button
+          onClick={loadProjects}
+          className="text-slate-400 hover:text-slate-600 p-1.5 rounded hover:bg-white flex-shrink-0"
+          title="Refresh project list"
+        >
+          <RefreshCw size={14} />
+        </button>
       </div>
 
       {/* Upload cards */}

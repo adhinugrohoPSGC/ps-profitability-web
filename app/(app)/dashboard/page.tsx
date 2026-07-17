@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { DollarSign, TrendingUp, TrendingDown, BarChart2, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/fetchAll'
 import { useProject } from '@/contexts/ProjectContext'
 
 interface Project {
@@ -59,13 +60,13 @@ export default function DashboardPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('projects').select('*').eq('id', selectedProject).single(),
-      supabase.from('timesheet_entries').select('*').eq('project_id', selectedProject),
-      supabase.from('expense_entries').select('*').eq('project_id', selectedProject),
+      fetchAllRows<TimesheetEntry>('timesheet_entries', selectedProject, 'entry_date'),
+      fetchAllRows<ExpenseEntry>('expense_entries', selectedProject, 'expense_date'),
       supabase.from('user_settings').select('key, value'),
     ]).then(([proj, ts, exp, sett]) => {
       setProject(proj.data as Project)
-      setTimesheet((ts.data as TimesheetEntry[]) ?? [])
-      setExpenses((exp.data as ExpenseEntry[]) ?? [])
+      setTimesheet(ts)
+      setExpenses(exp)
       const settMap: Settings = {}
       ;((sett.data ?? []) as { key: string; value: string }[]).forEach(({ key, value }) => { settMap[key] = value ?? undefined })
       setSettings(settMap)

@@ -5,6 +5,7 @@ import { useProject } from '@/contexts/ProjectContext'
 import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
+import { fetchAllRows } from '@/lib/fetchAll'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 
@@ -22,6 +23,14 @@ interface TimesheetEntry {
   bill_rate_sgd: number
   billable_value_sgd: number
   import_batch_id: string
+}
+
+interface TsSummary {
+  name: string
+  entries: number
+  hours: number
+  firstDate: string
+  lastDate: string
 }
 
 interface ExpenseEntry {
@@ -88,12 +97,13 @@ export default function RecordsPage() {
     if (!selectedProject) { setTimesheet([]); setExpenses([]); return }
     setLoading(true)
     Promise.all([
-      createClient().from('timesheet_entries').select('*').eq('project_id', selectedProject).order('entry_date', { ascending: false }),
-      createClient().from('expense_entries').select('*').eq('project_id', selectedProject).order('expense_date', { ascending: false }),
+      fetchAllRows<TimesheetEntry>('timesheet_entries', selectedProject, 'entry_date'),
+      fetchAllRows<ExpenseEntry>('expense_entries', selectedProject, 'expense_date'),
     ]).then(([ts, ex]) => {
-      setTimesheet((ts.data ?? []) as TimesheetEntry[])
-      setExpenses((ex.data ?? []) as ExpenseEntry[])
-    }).finally(() => setLoading(false))
+      setTimesheet(ts)
+      setExpenses(ex)
+    }).catch(() => toast('Failed to load records', 'error'))
+      .finally(() => setLoading(false))
   }, [selectedProject, refreshKey])
 
   const tsFacets = useMemo(() =>
@@ -109,6 +119,24 @@ export default function RecordsPage() {
   const filteredTs = tsFacets.filtered
   const filteredEx = exFacets.filtered
 
+  // Timesheet tab shows hours summarised per team member, not per line
+  const tsSummary = useMemo(() => {
+    const map = new Map<string, TsSummary>()
+    for (const r of filteredTs) {
+      const name = r.consultant_name || '—'
+      const cur = map.get(name)
+      if (!cur) {
+        map.set(name, { name, entries: 1, hours: r.hours ?? 0, firstDate: r.entry_date, lastDate: r.entry_date })
+      } else {
+        cur.entries += 1
+        cur.hours += r.hours ?? 0
+        if (r.entry_date < cur.firstDate) cur.firstDate = r.entry_date
+        if (r.entry_date > cur.lastDate) cur.lastDate = r.entry_date
+      }
+    }
+    return [...map.values()].sort((a, b) => b.hours - a.hours)
+  }, [filteredTs])
+
   // KPIs
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
   const totalCost = filteredTs.reduce((s, r) => s + (r.labour_cost_sgd ?? 0), 0)
@@ -118,13 +146,6 @@ export default function RecordsPage() {
   const activeSel = tab === 'timesheet' ? tsSel : exSel
   const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
   const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
-
-  async function deleteTimesheetRow(id: number) {
-    const { error } = await createClient().from('timesheet_entries').delete().eq('id', id)
-    if (error) { toast(error.message, 'error'); return }
-    setTimesheet(prev => prev.filter(r => r.id !== id))
-    toast('Row deleted', 'success')
-  }
 
   async function deleteExpenseRow(id: number) {
     const { error } = await createClient().from('expense_entries').delete().eq('id', id)
@@ -154,33 +175,17 @@ export default function RecordsPage() {
     setExSel(emptySel(EX_FACETS))
   }
 
-  const tsColumns: DataColumn<TimesheetEntry>[] = [
-    { key: 'date', label: 'Date', width: 105, sortValue: r => r.entry_date,
-      render: r => <span className="text-slate-600 whitespace-nowrap">{r.entry_date}</span> },
-    { key: 'consultant', label: 'Consultant', width: 150, sortValue: r => r.consultant_name?.toLowerCase() || null,
-      render: r => <span className="font-medium text-slate-800 truncate block" title={r.consultant_name}>{r.consultant_name || '—'}</span> },
-    { key: 'phase', label: 'Phase', width: 120, sortValue: r => r.phase?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.phase}>{r.phase || '—'}</span> },
-    { key: 'task', label: 'Task', width: 200, sortValue: r => r.task_description?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.task_description}>{r.task_description || '—'}</span> },
-    { key: 'hours', label: 'Hrs', width: 70, align: 'right', sortValue: r => r.hours,
-      render: r => <span className="font-mono text-slate-700">{r.hours?.toFixed(1)}</span> },
-    { key: 'cost_rate', label: 'Cost Rate', width: 105, align: 'right', sortValue: r => r.cost_rate_sgd || null,
-      render: r => <span className="font-mono text-slate-500">{r.cost_rate_sgd > 0 ? fmt(r.cost_rate_sgd) : '—'}</span> },
-    { key: 'labour_cost', label: 'Labour Cost', width: 115, align: 'right', sortValue: r => r.labour_cost_sgd || null,
-      render: r => <span className="font-mono text-slate-700 font-medium">{r.labour_cost_sgd > 0 ? fmt(r.labour_cost_sgd) : '—'}</span> },
-    { key: 'bill_rate', label: 'Bill Rate', width: 100, align: 'right', sortValue: r => r.bill_rate_sgd || null,
-      render: r => <span className="font-mono text-slate-500">{r.bill_rate_sgd > 0 ? fmt(r.bill_rate_sgd) : '—'}</span> },
-    { key: 'bill_value', label: 'Bill Value', width: 110, align: 'right', sortValue: r => r.billable_value_sgd || null,
-      render: r => <span className="font-mono text-teal-700 font-medium">{r.billable_value_sgd > 0 ? fmt(r.billable_value_sgd) : '—'}</span> },
-    { key: 'batch', label: 'Batch', width: 110, sortValue: r => r.import_batch_id || null,
-      render: r => <span className="text-xs text-slate-400 truncate block" title={r.import_batch_id}>{r.import_batch_id || '—'}</span> },
-    { key: 'del', label: '', width: 44,
-      render: r => (
-        <button onClick={() => deleteTimesheetRow(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
-          <Trash2 size={13} />
-        </button>
-      ) },
+  const tsColumns: DataColumn<TsSummary>[] = [
+    { key: 'member', label: 'Team Member', width: 220, sortValue: r => r.name.toLowerCase(),
+      render: r => <span className="font-medium text-slate-800 truncate block" title={r.name}>{r.name}</span> },
+    { key: 'entries', label: 'Entries', width: 90, align: 'right', sortValue: r => r.entries,
+      render: r => <span className="font-mono text-slate-500">{r.entries}</span> },
+    { key: 'first', label: 'First Entry', width: 120, sortValue: r => r.firstDate,
+      render: r => <span className="font-mono text-xs text-slate-500">{r.firstDate}</span> },
+    { key: 'last', label: 'Last Entry', width: 120, sortValue: r => r.lastDate,
+      render: r => <span className="font-mono text-xs text-slate-500">{r.lastDate}</span> },
+    { key: 'hours', label: 'Total Hrs', width: 110, align: 'right', sortValue: r => r.hours,
+      render: r => <span className="font-mono text-slate-800 font-semibold">{r.hours.toFixed(1)}</span> },
   ]
 
   const exColumns: DataColumn<ExpenseEntry>[] = [
@@ -326,18 +331,15 @@ export default function RecordsPage() {
             <DataTable
               key="timesheet"
               columns={tsColumns}
-              rows={filteredTs}
-              rowKey={r => r.id}
+              rows={tsSummary}
+              rowKey={r => r.name}
               rowCap={50}
               footer={
                 <tr>
-                  <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Totals</td>
-                  <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
-                  <td />
-                  <td className="px-3 py-2 text-right font-mono">{fmt(totalCost)}</td>
-                  <td />
-                  <td className="px-3 py-2 text-right font-mono text-teal-700">{fmt(totalBill)}</td>
+                  <td className="px-3 py-2 text-slate-500">Totals · {tsSummary.length} team members</td>
+                  <td className="px-3 py-2 text-right font-mono">{filteredTs.length}</td>
                   <td colSpan={2} />
+                  <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
                 </tr>
               }
             />

@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import { fetchAllRows } from '@/lib/fetchAll'
@@ -89,6 +89,7 @@ export default function RecordsPage() {
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [syncing, setSyncing] = useState(false)
   const [search, setSearch] = useState('')
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
   const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
@@ -140,12 +141,27 @@ export default function RecordsPage() {
   // KPIs
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
   const totalCost = filteredTs.reduce((s, r) => s + (r.labour_cost_sgd ?? 0), 0)
-  const totalBill = filteredTs.reduce((s, r) => s + (r.billable_value_sgd ?? 0), 0)
   const totalExpSgd = filteredEx.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
 
   const activeSel = tab === 'timesheet' ? tsSel : exSel
   const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
   const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
+
+  async function syncClickUp() {
+    if (!selectedProject) return
+    setSyncing(true)
+    try {
+      const res = await fetch(`/api/sync-clickup?projectId=${selectedProject}`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Sync failed')
+      toast(`Synced ${json.rows ?? 0} entries from ClickUp (last ${json.windowDays} days)`, 'success')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Sync failed', 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function deleteExpenseRow(id: number) {
     const { error } = await createClient().from('expense_entries').delete().eq('id', id)
@@ -238,21 +254,29 @@ export default function RecordsPage() {
           <h1 className="text-xl font-bold text-slate-800">Records</h1>
           <p className="text-sm text-slate-400 mt-0.5">Timesheet and expense entries for this project</p>
         </div>
-        <button
-          onClick={() => setRefreshKey(k => k + 1)}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={syncClickUp}
+            disabled={syncing || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            <Download size={12} className={syncing ? 'animate-bounce' : ''} /> {syncing ? 'Syncing…' : 'Sync ClickUp'}
+          </button>
+          <button
+            onClick={() => setRefreshKey(k => k + 1)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* KPI row */}
       {tab === 'timesheet' ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <KpiCard label="Total Hours" value={totalHours.toFixed(1) + ' h'} sub={`${filteredTs.length} entries`} />
           <KpiCard label="Labour Cost" value={fmt(totalCost)} />
-          <KpiCard label="Billable Value" value={fmt(totalBill)} />
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">

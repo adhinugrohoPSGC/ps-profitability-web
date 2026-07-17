@@ -11,6 +11,8 @@ import { useProject } from '@/contexts/ProjectContext'
 interface Project {
   id: string; name: string; contract_value: number
   contract_currency: string; billing_type: string
+  project_manager: string | null; start_date: string | null; end_date: string | null
+  status: string; notes: string | null
 }
 interface TimesheetEntry {
   id: number; consultant_name: string; phase: string; hours: number
@@ -22,6 +24,23 @@ interface Settings { overhead_rate_pct?: string; [key: string]: string | undefin
 const DEFAULT_SGA_RATE_PCT = 30
 
 const fmt = (v: number) => new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 0 }).format(v)
+const fmtDate = (iso: string | null) => {
+  if (!iso) return '—'
+  const d = new Date(iso + 'T00:00:00')
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+const STATUS_COLORS: Record<string, string> = {
+  active: 'text-emerald-600', completed: 'text-blue-600', archived: 'text-slate-400', 'on-hold': 'text-amber-600',
+}
+
+function InfoField({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">{label}</p>
+      <p className={`text-sm font-semibold text-slate-800 ${valueClass ?? ''}`}>{value}</p>
+    </div>
+  )
+}
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
 function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct >= 15 ? 'text-amber-500' : 'text-red-500' }
 const COST_COLORS = { labour: '#0d9488', expenses: '#3b82f6', sga: '#f59e0b' }
@@ -115,6 +134,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Project Information */}
+      {project && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">Project Information</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+            <InfoField label="Project Name" value={project.name} />
+            <InfoField label="Project Manager" value={project.project_manager || '—'} />
+            <InfoField label="Kick Off Date" value={fmtDate(project.start_date)} />
+            <InfoField label="Go Live Date" value={fmtDate(project.end_date)} />
+            <InfoField label="Billing Type" value={project.billing_type} />
+            <InfoField label="Status" value={project.status} valueClass={`capitalize ${STATUS_COLORS[project.status] ?? ''}`} />
+            {project.notes && <div className="col-span-2"><InfoField label="Remarks" value={project.notes} /></div>}
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-4">
         {[

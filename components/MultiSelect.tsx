@@ -38,9 +38,19 @@ export default function MultiSelect({ label, options, selected, onChange }: Prop
   const q = query.trim().toLowerCase()
   const shown = q ? options.filter(o => o.value.toLowerCase().includes(q)) : options
   const shortLabel = label.replace(/^All /, '')
+  const allShownSelected = shown.length > 0 && shown.every(o => selected.includes(o.value))
 
   function toggle(v: string) {
     onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])
+  }
+
+  function selectAllShown() {
+    onChange([...new Set([...selected, ...shown.map(o => o.value)])])
+  }
+
+  function unselectAllShown() {
+    const shownValues = new Set(shown.map(o => o.value))
+    onChange(selected.filter(v => !shownValues.has(v)))
   }
 
   return (
@@ -78,6 +88,27 @@ export default function MultiSelect({ label, options, selected, onChange }: Prop
                 placeholder="Filter options…"
                 className="w-full text-xs border border-slate-200 rounded-md pl-6 pr-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
+            </div>
+          )}
+          {shown.length > 0 && (
+            <div className="flex items-center gap-3 px-3 py-1.5 border-b border-slate-100 bg-slate-50/60">
+              <button
+                type="button"
+                onClick={selectAllShown}
+                disabled={allShownSelected}
+                className="text-xs text-teal-600 hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default"
+              >
+                Select all{q ? ` (${shown.length})` : ''}
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={unselectAllShown}
+                disabled={!shown.some(o => selected.includes(o.value))}
+                className="text-xs text-teal-600 hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default"
+              >
+                Unselect all
+              </button>
             </div>
           )}
           <ul role="listbox" aria-multiselectable="true" className="max-h-64 overflow-y-auto py-1">

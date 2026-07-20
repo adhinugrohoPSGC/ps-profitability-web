@@ -176,17 +176,21 @@ export default function ExpensesCard({ selectedProject, hideProjectWarning }: { 
         return {
           user_id: ANON_USER_ID,
           project_id: selectedProject,
-          expense_date: row.expense_date,
+          expense_date: row.expense_date || null,
+          identifier: row.identifier || null,
+          company_name: row.company_name || null,
+          country: row.country || null,
+          project_code_name: row.project_id || null,
+          prs_prj: row.prs_prj || null,
+          sales_person: row.sales_person || null,
+          pm: row.pm || null,
+          resource: row.resource || null,
           category: row.category,
-          description: row.description,
-          vendor: row.vendor,
+          month: row.month || null,
+          billable_to_client: row.billable_to_client,
           amount_native: row.amount_native,
           currency: row.currency,
-          fx_rate: row.currency === 'IDR' ? fxRate : 1,
           amount_sgd: amountSgd,
-          paid_by: row.paid_by,
-          receipted: row.receipted,
-          notes: row.notes,
           import_batch_id: batch,
         }
       })
@@ -263,7 +267,7 @@ export default function ExpensesCard({ selectedProject, hideProjectWarning }: { 
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase tracking-wide">
                 <tr>
-                  {['Date', 'Category', 'Description', 'Vendor', 'Amount', 'CCY', 'Rcpt', 'Status'].map(h => (
+                  {['Date', 'Category', 'Sales Person', 'PM', 'Resource', 'Billable', 'Amount', 'CCY', 'Status'].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -273,13 +277,14 @@ export default function ExpensesCard({ selectedProject, hideProjectWarning }: { 
                   <tr key={i} className={row._warnings.length > 0 ? 'bg-amber-50/30' : ''}>
                     <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.expense_date || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{row.category || <span className="text-red-400 italic">none</span>}</td>
-                    <td className="px-3 py-2 max-w-[160px] truncate text-slate-500" title={row.description}>{row.description || '—'}</td>
-                    <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.vendor}>{row.vendor || '—'}</td>
+                    <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.sales_person}>{row.sales_person || '—'}</td>
+                    <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.pm}>{row.pm || '—'}</td>
+                    <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.resource}>{row.resource || '—'}</td>
+                    <td className="px-3 py-2 text-center">
+                      {row.billable_to_client ? <CheckCircle size={12} className="text-green-500 mx-auto" /> : <X size={12} className="text-slate-300 mx-auto" />}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono text-slate-700">{row.amount_native.toLocaleString()}</td>
                     <td className="px-3 py-2 text-slate-500">{row.currency}</td>
-                    <td className="px-3 py-2 text-center">
-                      {row.receipted ? <CheckCircle size={12} className="text-green-500 mx-auto" /> : <X size={12} className="text-slate-300 mx-auto" />}
-                    </td>
                     <td className="px-3 py-2">
                       {row._warnings.length > 0 ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">

@@ -35,17 +35,15 @@ interface TimesheetEntry {
 
 interface ExpenseEntry {
   id: number
-  expense_date: string
+  expense_date: string | null
   category: string
-  description: string
-  vendor: string
+  sales_person: string | null
+  pm: string | null
+  resource: string | null
+  billable_to_client: boolean
   amount_native: number
   currency: string
-  fx_rate: number
   amount_sgd: number
-  receipted: number
-  paid_by: string
-  notes: string
 }
 
 interface BudgetLine {
@@ -369,17 +367,15 @@ async function generateReport(opts: {
     ws.columns = [
       { key: 'date', width: 12 },
       { key: 'cat', width: 18 },
-      { key: 'desc', width: 30 },
-      { key: 'vendor', width: 20 },
+      { key: 'sales', width: 18 },
+      { key: 'pm', width: 18 },
+      { key: 'resource', width: 18 },
+      { key: 'billable', width: 12 },
       { key: 'native', width: 16 },
       { key: 'ccy', width: 8 },
-      { key: 'fx', width: 10 },
-      { key: 'usd', width: 14 },
-      { key: 'rec', width: 10 },
-      { key: 'paidBy', width: 18 },
-      { key: 'notes', width: 28 },
+      { key: 'sgd', width: 14 },
     ]
-    headerRow(ws, ['Date', 'Category', 'Description', 'Vendor', 'Amount (Native)', 'Currency', 'FX Rate', 'Amount (SGD)', 'Receipted', 'Paid By', 'Notes'])
+    headerRow(ws, ['Date', 'Category', 'Sales Person', 'PM', 'Resource', 'Billable to Client', 'Amount (Native)', 'Currency', 'Amount (SGD)'])
 
     // Group by category
     const categories = [...new Set(expenses.map(e => e.category ?? 'Uncategorized'))]
@@ -390,26 +386,22 @@ async function generateReport(opts: {
         const row = ws.addRow([
           e.expense_date,
           e.category,
-          e.description,
-          e.vendor,
+          e.sales_person,
+          e.pm,
+          e.resource,
+          e.billable_to_client ? 'Yes' : 'No',
           e.amount_native,
           e.currency,
-          e.fx_rate,
           e.amount_sgd,
-          e.receipted ? 'Yes' : 'No',
-          e.paid_by,
-          e.notes,
         ])
-        if (!e.receipted) row.fill = solidFill(AMBER_FILL)
-        row.getCell(5).numFmt = '#,##0.00'
-        row.getCell(7).numFmt = '0.0000'
-        currencyFmt(row.getCell(8))
+        row.getCell(7).numFmt = '#,##0.00'
+        currencyFmt(row.getCell(9))
         catTotal += e.amount_sgd ?? 0
       }
-      const subTot = ws.addRow(['', `${cat} Subtotal`, '', '', '', '', '', catTotal])
+      const subTot = ws.addRow(['', `${cat} Subtotal`, '', '', '', '', '', '', catTotal])
       subTot.font = { bold: true, italic: true }
       subTot.fill = solidFill(GREY_FILL)
-      currencyFmt(subTot.getCell(8))
+      currencyFmt(subTot.getCell(9))
     }
   }
 

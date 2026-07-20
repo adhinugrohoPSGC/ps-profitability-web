@@ -35,16 +35,21 @@ interface TsSummary {
 
 interface ExpenseEntry {
   id: number
-  expense_date: string
+  identifier: string | null
+  company_name: string | null
+  country: string | null
+  project_code_name: string | null
+  prs_prj: string | null
+  sales_person: string | null
+  pm: string | null
+  resource: string | null
   category: string
-  description: string
-  vendor: string
-  amount_native: number
+  expense_date: string | null
+  month: string | null
+  billable_to_client: boolean
   currency: string
+  amount_native: number
   amount_sgd: number
-  paid_by: string
-  receipted: boolean
-  notes: string
   import_batch_id: string
 }
 
@@ -52,6 +57,12 @@ interface ExpenseEntry {
 
 function fmt(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'SGD', minimumFractionDigits: 0 }).format(n)
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  const d = new Date(iso + 'T00:00:00')
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -71,9 +82,14 @@ const TS_FACETS: FacetDef<TimesheetEntry>[] = [
 ]
 
 const EX_FACETS: FacetDef<ExpenseEntry>[] = [
+  { key: 'company', label: 'All companies', get: r => r.company_name },
+  { key: 'country', label: 'All countries', get: r => r.country },
+  { key: 'sales_person', label: 'All sales persons', get: r => r.sales_person },
+  { key: 'pm', label: 'All PMs', get: r => r.pm },
+  { key: 'resource', label: 'All resources', get: r => r.resource },
   { key: 'category', label: 'All categories', get: r => r.category },
-  { key: 'vendor', label: 'All vendors', get: r => r.vendor },
-  { key: 'paid_by', label: 'All paid by', get: r => r.paid_by },
+  { key: 'month', label: 'All months', get: r => r.month },
+  { key: 'billable', label: 'All billable', get: r => r.billable_to_client ? 'Yes' : 'No' },
   { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
 ]
 
@@ -114,7 +130,7 @@ export default function RecordsPage() {
 
   const exFacets = useMemo(() =>
     buildFacets(expenses, EX_FACETS, exSel, search,
-      r => [r.category, r.description, r.vendor, r.paid_by, r.currency, r.import_batch_id]),
+      r => [r.identifier, r.company_name, r.country, r.project_code_name, r.sales_person, r.pm, r.resource, r.category, r.currency, r.import_batch_id]),
     [expenses, exSel, search])
 
   const filteredTs = tsFacets.filtered
@@ -205,28 +221,38 @@ export default function RecordsPage() {
   ]
 
   const exColumns: DataColumn<ExpenseEntry>[] = [
-    { key: 'date', label: 'Date', width: 105, sortValue: r => r.expense_date,
-      render: r => <span className="text-slate-600 whitespace-nowrap">{r.expense_date}</span> },
-    { key: 'category', label: 'Category', width: 130, sortValue: r => r.category?.toLowerCase() || null,
+    { key: 'identifier', label: 'Identifier', width: 120, sortValue: r => r.identifier?.toLowerCase() || null,
+      render: r => <span className="font-mono text-xs text-slate-600 truncate block" title={r.identifier ?? ''}>{r.identifier || '—'}</span> },
+    { key: 'company', label: 'Company Name', width: 150, sortValue: r => r.company_name?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.company_name ?? ''}>{r.company_name || '—'}</span> },
+    { key: 'country', label: 'Country', width: 110, sortValue: r => r.country?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.country ?? ''}>{r.country || '—'}</span> },
+    { key: 'project_code', label: 'Project Code / Name', width: 220, sortValue: r => r.project_code_name?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.project_code_name ?? ''}>{r.project_code_name || '—'}</span> },
+    { key: 'prs_prj', label: 'PRS/PRJ', width: 90, sortValue: r => r.prs_prj?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.prs_prj ?? ''}>{r.prs_prj || '—'}</span> },
+    { key: 'sales_person', label: 'Sales Person', width: 130, sortValue: r => r.sales_person?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.sales_person ?? ''}>{r.sales_person || '—'}</span> },
+    { key: 'pm', label: 'PM', width: 120, sortValue: r => r.pm?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.pm ?? ''}>{r.pm || '—'}</span> },
+    { key: 'resource', label: 'Resource', width: 120, sortValue: r => r.resource?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.resource ?? ''}>{r.resource || '—'}</span> },
+    { key: 'category', label: 'Expense Category', width: 150, sortValue: r => r.category?.toLowerCase() || null,
       render: r => <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium truncate max-w-full" title={r.category}>{r.category || '—'}</span> },
-    { key: 'description', label: 'Description', width: 180, sortValue: r => r.description?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.description}>{r.description || '—'}</span> },
-    { key: 'vendor', label: 'Vendor', width: 130, sortValue: r => r.vendor?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.vendor}>{r.vendor || '—'}</span> },
-    { key: 'amount', label: 'Amount', width: 100, align: 'right', sortValue: r => r.amount_native,
-      render: r => <span className="font-mono text-slate-700">{r.amount_native?.toLocaleString()}</span> },
-    { key: 'ccy', label: 'CCY', width: 60, sortValue: r => r.currency || null,
+    { key: 'date', label: 'Date', width: 110, sortValue: r => r.expense_date,
+      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.expense_date)}</span> },
+    { key: 'month', label: 'Month', width: 90, sortValue: r => r.month?.toLowerCase() || null,
+      render: r => <span className="text-xs text-slate-500 whitespace-nowrap">{r.month || '—'}</span> },
+    { key: 'billable', label: 'Billable to Client', width: 100, align: 'center', sortValue: r => (r.billable_to_client ? 1 : 0),
+      render: r => r.billable_to_client
+        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">Yes</span>
+        : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500 font-medium">No</span> },
+    { key: 'ccy', label: 'Currency', width: 80, sortValue: r => r.currency || null,
       render: r => <span className="text-slate-500 text-xs">{r.currency}</span> },
-    { key: 'sgd', label: 'SGD', width: 110, align: 'right', sortValue: r => r.amount_sgd,
-      render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
-    { key: 'paid_by', label: 'Paid By', width: 110, sortValue: r => r.paid_by?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.paid_by}>{r.paid_by || '—'}</span> },
-    { key: 'rcpt', label: 'Rcpt', width: 60, align: 'center', sortValue: r => (r.receipted ? 1 : 0),
-      render: r => r.receipted
-        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
-        : <span className="inline-block w-2 h-2 rounded-full bg-slate-200" /> },
-    { key: 'batch', label: 'Batch', width: 110, sortValue: r => r.import_batch_id || null,
-      render: r => <span className="text-xs text-slate-400 truncate block" title={r.import_batch_id}>{r.import_batch_id || '—'}</span> },
+    { key: 'amount', label: 'Amount (Actual)', width: 130, align: 'right', sortValue: r => r.amount_native,
+      render: r => <span className="font-mono text-slate-700">{r.amount_native?.toLocaleString()}</span> },
+    { key: 'sgd', label: 'Amount (SGD)', width: 120, align: 'right', sortValue: r => r.amount_sgd,
+      render: r => <span className="font-mono text-slate-800 font-medium">{r.amount_sgd != null ? fmt(r.amount_sgd) : '—'}</span> },
     { key: 'del', label: '', width: 44,
       render: r => (
         <button onClick={() => deleteExpenseRow(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
@@ -281,7 +307,7 @@ export default function RecordsPage() {
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <KpiCard label="Total Expenses (SGD)" value={fmt(totalExpSgd)} sub={`${filteredEx.length} entries`} />
-          <KpiCard label="Receipted" value={filteredEx.filter(r => r.receipted).length + ' / ' + filteredEx.length} />
+          <KpiCard label="Billable to Client" value={filteredEx.filter(r => r.billable_to_client).length + ' / ' + filteredEx.length} />
           <KpiCard label="Categories" value={String(new Set(filteredEx.map(r => r.category)).size)} />
         </div>
       )}
@@ -293,7 +319,7 @@ export default function RecordsPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…' : 'Search category, vendor, description…'}
+            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…' : 'Search identifier, company, PM, resource…'}
             aria-label="Search records"
             className="w-full text-sm border border-slate-200 rounded-lg pl-8 pr-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
@@ -382,9 +408,9 @@ export default function RecordsPage() {
               rowCap={50}
               footer={
                 <tr>
-                  <td colSpan={6} className="px-3 py-2 text-right text-slate-500">Total (SGD)</td>
+                  <td colSpan={14} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {filteredEx.length} entries</td>
                   <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
-                  <td colSpan={4} />
+                  <td />
                 </tr>
               }
             />

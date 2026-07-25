@@ -8,6 +8,7 @@ import DataTable, { type DataColumn } from '@/components/DataTable'
 import { fetchAllRows } from '@/lib/fetchAll'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
+import { useDebounce } from '@/lib/useDebounce'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ export default function RecordsPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 200)
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
   const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
 
@@ -124,14 +126,14 @@ export default function RecordsPage() {
   }, [selectedProject, refreshKey])
 
   const tsFacets = useMemo(() =>
-    buildFacets(timesheet, TS_FACETS, tsSel, search,
+    buildFacets(timesheet, TS_FACETS, tsSel, debouncedSearch,
       r => [r.consultant_name, r.phase, r.task_description, r.import_batch_id]),
-    [timesheet, tsSel, search])
+    [timesheet, tsSel, debouncedSearch])
 
   const exFacets = useMemo(() =>
-    buildFacets(expenses, EX_FACETS, exSel, search,
+    buildFacets(expenses, EX_FACETS, exSel, debouncedSearch,
       r => [r.identifier, r.company_name, r.country, r.project_code_name, r.sales_person, r.pm, r.resource, r.category, r.currency, r.import_batch_id]),
-    [expenses, exSel, search])
+    [expenses, exSel, debouncedSearch])
 
   const filteredTs = tsFacets.filtered
   const filteredEx = exFacets.filtered

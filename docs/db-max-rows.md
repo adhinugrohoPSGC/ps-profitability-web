@@ -5,17 +5,15 @@ request, no matter what `limit`/`range` the client asks for. This app's
 `lib/fetchAll.ts` pages around that cap, but a low cap means *more
 sequential round-trips* to load one project's full dataset.
 
-Applied directly to Postgres (not in application code — must be repeated
-per environment):
+Applied directly to Postgres (not in application code):
 
     alter role authenticator set pgrst.db_max_rows = '10000';
     notify pgrst, 'reload config';
 
-**Sandbox:** applied 2026-07-25.
-**Production:** NOT yet applied — apply before or immediately after
-promoting this branch, or large projects will fall back to the slower
-multi-request path (`lib/fetchAll.ts` still works correctly either way,
-just slower).
+**Applied 2026-07-25.** Sandbox and production share the same Supabase
+project (different Postgres schemas, `sandbox` vs `public`, same
+`authenticator` role), so this override already covers both — no separate
+production step needed.
 
 10000 is comfortably above the largest table today (~4,459 rows). Raise
 again if any project's timesheet or expense history grows past that.

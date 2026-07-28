@@ -10,7 +10,6 @@ import { useProject } from '@/contexts/ProjectContext'
 interface Project {
   id: string
   name: string
-  client_name: string
   project_manager: string
   start_date: string
   end_date: string
@@ -36,17 +35,15 @@ interface TimesheetEntry {
 
 interface ExpenseEntry {
   id: number
-  expense_date: string
+  expense_date: string | null
   category: string
-  description: string
-  vendor: string
+  sales_person: string | null
+  pm: string | null
+  resource: string | null
+  billable_to_client: boolean
   amount_native: number
   currency: string
-  fx_rate: number
   amount_sgd: number
-  receipted: number
-  paid_by: string
-  notes: string
 }
 
 interface BudgetLine {
@@ -68,7 +65,6 @@ interface RateCardEntry {
 
 interface Settings {
   company_name?: string
-  overhead_method?: string
   overhead_rate_pct?: string
   usd_to_idr?: string
   [key: string]: string | undefined
@@ -148,13 +144,15 @@ async function generateReport(opts: {
 
   // Financial calcs
   const labourCost = timesheet.reduce((s, e) => s + (e.labour_cost_sgd ?? 0), 0)
-  const directExpenses = expenses.reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
-  const sgaRatePct = project.overhead_rate_pct || parseFloat(settings.overhead_rate_pct ?? '0')
-  // SG&A is deducted directly as project cost: % of contract value
-  const sga = (project.contract_value ?? 0) * (sgaRatePct / 100)
-  const totalCost = labourCost + directExpenses + sga
+  const directExpenses = expenses
+    .filter(e => e.category?.toLowerCase() !== 'overhead')
+    .reduce((s, e) => s + (e.amount_sgd ?? 0), 0)
+  const parsedSgaRate = parseFloat(settings.overhead_rate_pct ?? '')
+  const sgaRatePct = isNaN(parsedSgaRate) ? 30 : parsedSgaRate
   const billableValue = timesheet.reduce((s, e) => s + (e.billable_value_sgd ?? 0), 0)
   const revenue = project.billing_type === 'T&M' ? billableValue : project.contract_value
+  const sga = revenue * (sgaRatePct / 100)
+  const totalCost = labourCost + directExpenses + sga
   const grossProfit = revenue - totalCost
   const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0
 
@@ -184,7 +182,6 @@ async function generateReport(opts: {
 
     ws.addRow([])
     ws.addRow(['Project', project.name])
-    ws.addRow(['Client', project.client_name ?? ''])
     ws.addRow(['Project Manager', project.project_manager ?? ''])
     ws.addRow(['Period', `${project.start_date ?? ''} — ${project.end_date ?? ''}`])
     ws.addRow(['Generated', generatedAt])
@@ -197,9 +194,9 @@ async function generateReport(opts: {
 
     const kpiData: [string, number][] = [
       ['Contract Value', revenue],
-      ['Labour Cost', labourCost],
+      ['Manpower Cost', labourCost],
       ['Direct Expenses', directExpenses],
-      ['SG&A', sga],
+      [`SG&A (${sgaRatePct}%)`, sga],
       ['Total Cost', totalCost],
       ['Gross Profit', grossProfit],
     ]
@@ -218,9 +215,9 @@ async function generateReport(opts: {
     marginRow.getCell(2).fill = solidFill(marginArgb(grossMarginPct))
   }
 
-  // ── Sheet 2: Labour Detail ─────────────────────────────────────────────────
+  // ── Sheet 2: Manpower Detail ───────────────────────────────────────────────
   if (sections.labourByConsultant || sections.labourByPhase) {
-    const ws = wb.addWorksheet('Labour Detail')
+    const ws = wb.addWorksheet('Manpower Detail')
     ws.columns = [
       { key: 'date', width: 12 },
       { key: 'consultant', width: 22 },
@@ -233,7 +230,7 @@ async function generateReport(opts: {
       { key: 'billRate', width: 12 },
       { key: 'billable', width: 14 },
     ]
-    headerRow(ws, ['Date', 'Consultant', 'Role', 'Phase', 'Task', 'Hours', 'Cost Rate', 'Labour Cost', 'Bill Rate', 'Billable Value'])
+    headerRow(ws, ['Date', 'Consultant', 'Role', 'Phase', 'Task', 'Hours', 'Cost Rate', 'Manpower Cost', 'Bill Rate', 'Billable Value'])
 
     let totalHours = 0, totalLabour = 0, totalBillable = 0
     for (const e of timesheet) {
@@ -272,9 +269,9 @@ async function generateReport(opts: {
     applyBorder(tot, true)
   }
 
-  // ── Sheet 3: Labour by Consultant ──────────────────────────────────────────
+  // ── Sheet 3: Manpower by Consultant ────────────────────────────────────────
   if (sections.labourByConsultant) {
-    const ws = wb.addWorksheet('Labour by Consultant')
+    const ws = wb.addWorksheet('Manpower by Consultant')
     ws.columns = [
       { key: 'consultant', width: 24 },
       { key: 'role', width: 16 },
@@ -283,7 +280,7 @@ async function generateReport(opts: {
       { key: 'labourCost', width: 16 },
       { key: 'billable', width: 16 },
     ]
-    headerRow(ws, ['Consultant', 'Role', 'Total Hours', 'Avg Cost Rate', 'Total Labour Cost', 'Total Billable Value'])
+    headerRow(ws, ['Consultant', 'Role', 'Total Hours', 'Avg Cost Rate', 'Total Manpower Cost', 'Total Billable Value'])
 
     const consultantMap: Record<string, { role: string; hours: number; cost: number; billable: number }> = {}
     for (const e of timesheet) {
@@ -318,9 +315,9 @@ async function generateReport(opts: {
     applyBorder(tot, true)
   }
 
-  // ── Sheet 4: Labour by Phase ───────────────────────────────────────────────
+  // ── Sheet 4: Manpower by Phase ─────────────────────────────────────────────
   if (sections.labourByPhase) {
-    const ws = wb.addWorksheet('Labour by Phase')
+    const ws = wb.addWorksheet('Manpower by Phase')
     ws.columns = [
       { key: 'phase', width: 20 },
       { key: 'budgH', width: 14 },
@@ -370,17 +367,15 @@ async function generateReport(opts: {
     ws.columns = [
       { key: 'date', width: 12 },
       { key: 'cat', width: 18 },
-      { key: 'desc', width: 30 },
-      { key: 'vendor', width: 20 },
+      { key: 'sales', width: 18 },
+      { key: 'pm', width: 18 },
+      { key: 'resource', width: 18 },
+      { key: 'billable', width: 12 },
       { key: 'native', width: 16 },
       { key: 'ccy', width: 8 },
-      { key: 'fx', width: 10 },
-      { key: 'usd', width: 14 },
-      { key: 'rec', width: 10 },
-      { key: 'paidBy', width: 18 },
-      { key: 'notes', width: 28 },
+      { key: 'sgd', width: 14 },
     ]
-    headerRow(ws, ['Date', 'Category', 'Description', 'Vendor', 'Amount (Native)', 'Currency', 'FX Rate', 'Amount (SGD)', 'Receipted', 'Paid By', 'Notes'])
+    headerRow(ws, ['Date', 'Category', 'Sales Person', 'PM', 'Resource', 'Billable to Client', 'Amount (Native)', 'Currency', 'Amount (SGD)'])
 
     // Group by category
     const categories = [...new Set(expenses.map(e => e.category ?? 'Uncategorized'))]
@@ -391,32 +386,28 @@ async function generateReport(opts: {
         const row = ws.addRow([
           e.expense_date,
           e.category,
-          e.description,
-          e.vendor,
+          e.sales_person,
+          e.pm,
+          e.resource,
+          e.billable_to_client ? 'Yes' : 'No',
           e.amount_native,
           e.currency,
-          e.fx_rate,
           e.amount_sgd,
-          e.receipted ? 'Yes' : 'No',
-          e.paid_by,
-          e.notes,
         ])
-        if (!e.receipted) row.fill = solidFill(AMBER_FILL)
-        row.getCell(5).numFmt = '#,##0.00'
-        row.getCell(7).numFmt = '0.0000'
-        currencyFmt(row.getCell(8))
+        row.getCell(7).numFmt = '#,##0.00'
+        currencyFmt(row.getCell(9))
         catTotal += e.amount_sgd ?? 0
       }
-      const subTot = ws.addRow(['', `${cat} Subtotal`, '', '', '', '', '', catTotal])
+      const subTot = ws.addRow(['', `${cat} Subtotal`, '', '', '', '', '', '', catTotal])
       subTot.font = { bold: true, italic: true }
       subTot.fill = solidFill(GREY_FILL)
-      currencyFmt(subTot.getCell(8))
+      currencyFmt(subTot.getCell(9))
     }
   }
 
   // ── Sheet 6: SG&A ──────────────────────────────────────────────────────────
   if (sections.overheadCalc) {
-    const ws = wb.addWorksheet('SGA')
+    const ws = wb.addWorksheet('SG&A')
     ws.columns = [{ key: 'a', width: 30 }, { key: 'b', width: 20 }]
 
     headerRow(ws, ['SG&A Calculation', ''])
@@ -424,13 +415,13 @@ async function generateReport(opts: {
 
     ws.addRow(['Rate Applied', `${sgaRatePct}%`])
 
-    const baseRow = ws.addRow(['Contract Value Base', project.contract_value ?? 0])
-    currencyFmt(baseRow.getCell(2))
+    const revenueRow = ws.addRow(['Revenue Base', revenue])
+    currencyFmt(revenueRow.getCell(2))
 
-    const usedRow = ws.addRow(['SG&A (rate × contract value)', sga])
-    usedRow.font = { bold: true }
-    usedRow.getCell(2).fill = solidFill(LIGHT_TEAL)
-    currencyFmt(usedRow.getCell(2))
+    const sgaRow = ws.addRow(['SG&A (rate × revenue)', sga])
+    sgaRow.font = { bold: true }
+    sgaRow.getCell(2).fill = solidFill(LIGHT_TEAL)
+    currencyFmt(sgaRow.getCell(2))
   }
 
   // ── Sheet 7: Budget vs Actual ──────────────────────────────────────────────
@@ -531,8 +522,8 @@ export default function ReportsPage() {
   const selectedProj = projects.find(p => p.id === projectId)
 
   const sectionLabels: { key: keyof typeof sections; label: string }[] = [
-    { key: 'labourByConsultant', label: 'Labour Cost by Consultant' },
-    { key: 'labourByPhase', label: 'Labour Cost by Phase' },
+    { key: 'labourByConsultant', label: 'Manpower Cost by Consultant' },
+    { key: 'labourByPhase', label: 'Manpower Cost by Phase' },
     { key: 'expenseBreakdown', label: 'Expense Breakdown' },
     { key: 'overheadCalc', label: 'SG&A Calculation' },
     { key: 'budgetVsActual', label: 'Budget vs Actual' },
@@ -542,9 +533,9 @@ export default function ReportsPage() {
 
   const sheetList = [
     '1. Summary',
-    sections.labourByConsultant || sections.labourByPhase ? '2. Labour Detail' : null,
-    sections.labourByConsultant ? '3. Labour by Consultant' : null,
-    sections.labourByPhase ? '4. Labour by Phase' : null,
+    sections.labourByConsultant || sections.labourByPhase ? '2. Manpower Detail' : null,
+    sections.labourByConsultant ? '3. Manpower by Consultant' : null,
+    sections.labourByPhase ? '4. Manpower by Phase' : null,
     sections.expenseBreakdown ? '5. Expenses' : null,
     sections.overheadCalc ? '6. SG&A' : null,
     sections.budgetVsActual ? '7. Budget vs Actual' : null,
@@ -715,7 +706,6 @@ export default function ReportsPage() {
               <div className="bg-slate-50 rounded-lg p-4">
                 <p className="text-xs font-medium text-slate-500 mb-1">Project</p>
                 <p className="text-sm font-semibold text-slate-800">{selectedProj.name}</p>
-                <p className="text-xs text-slate-500">{selectedProj.client_name}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-4">
                 <p className="text-xs font-medium text-slate-500 mb-1">Period</p>

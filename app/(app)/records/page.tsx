@@ -2,8 +2,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2, Plus } from 'lucide-react'
 import { useToast } from '@/components/Toast'
+import DataTable, { type DataColumn } from '@/components/DataTable'
+import { fetchAllRows } from '@/lib/fetchAll'
+import MultiSelect from '@/components/MultiSelect'
+import { buildFacets, type FacetDef } from '@/lib/facets'
+import { useDebounce } from '@/lib/useDebounce'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,25 +26,52 @@ interface TimesheetEntry {
   import_batch_id: string
 }
 
+interface TsSummary {
+  name: string
+  entries: number
+  hours: number
+  firstDate: string
+  lastDate: string
+}
+
 interface ExpenseEntry {
   id: number
-  expense_date: string
+  identifier: string | null
+  company_name: string | null
+  country: string | null
+  project_code_name: string | null
+  prs_prj: string | null
+  sales_person: string | null
+  pm: string | null
+  resource: string | null
   category: string
-  description: string
-  vendor: string
-  amount_native: number
+  expense_date: string | null
+  month: string | null
+  billable_to_client: boolean
   currency: string
+  amount_native: number
   amount_sgd: number
-  paid_by: string
-  receipted: boolean
-  notes: string
   import_batch_id: string
+}
+
+interface VendorCost {
+  id: number
+  vendor_name: string
+  description: string | null
+  cost_date: string
+  amount_sgd: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'SGD', minimumFractionDigits: 0 }).format(n)
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  const d = new Date(iso + 'T00:00:00')
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -52,57 +84,148 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
   )
 }
 
+const TS_FACETS: FacetDef<TimesheetEntry>[] = [
+  { key: 'consultant', label: 'All consultants', get: r => r.consultant_name },
+  { key: 'phase', label: 'All phases', get: r => r.phase },
+  { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
+]
+
+const EX_FACETS: FacetDef<ExpenseEntry>[] = [
+  { key: 'company', label: 'All companies', get: r => r.company_name },
+  { key: 'country', label: 'All countries', get: r => r.country },
+  { key: 'sales_person', label: 'All sales persons', get: r => r.sales_person },
+  { key: 'pm', label: 'All PMs', get: r => r.pm },
+  { key: 'resource', label: 'All resources', get: r => r.resource },
+  { key: 'category', label: 'All categories', get: r => r.category },
+  { key: 'month', label: 'All months', get: r => r.month },
+  { key: 'billable', label: 'All billable', get: r => r.billable_to_client ? 'Yes' : 'No' },
+  { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
+]
+
+const emptySel = (defs: { key: string }[]) => Object.fromEntries(defs.map(d => [d.key, [] as string[]]))
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RecordsPage() {
   const { selectedProject } = useProject()
   const { toast } = useToast()
-  const [tab, setTab] = useState<'timesheet' | 'expenses'>('timesheet')
+  const [tab, setTab] = useState<'timesheet' | 'expenses' | 'vendor'>('timesheet')
   const [timesheet, setTimesheet] = useState<TimesheetEntry[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const [vendorCosts, setVendorCosts] = useState<VendorCost[]>([])
   const [loading, setLoading] = useState(false)
-  const [batchFilter, setBatchFilter] = useState('')
-  const [showAllTs, setShowAllTs] = useState(false)
-  const [showAllEx, setShowAllEx] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [vendorForm, setVendorForm] = useState({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
+  const [vendorSaving, setVendorSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 200)
+  const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
+  const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
 
   useEffect(() => {
-    if (!selectedProject) { setTimesheet([]); setExpenses([]); return }
+    if (!selectedProject) { setTimesheet([]); setExpenses([]); setVendorCosts([]); return }
     setLoading(true)
     Promise.all([
-      createClient().from('timesheet_entries').select('*').eq('project_id', selectedProject).order('entry_date', { ascending: false }),
-      createClient().from('expense_entries').select('*').eq('project_id', selectedProject).order('expense_date', { ascending: false }),
-    ]).then(([ts, ex]) => {
-      setTimesheet((ts.data ?? []) as TimesheetEntry[])
-      setExpenses((ex.data ?? []) as ExpenseEntry[])
-    }).finally(() => setLoading(false))
+      fetchAllRows<TimesheetEntry>('timesheet_entries', selectedProject, 'entry_date'),
+      fetchAllRows<ExpenseEntry>('expense_entries', selectedProject, 'expense_date'),
+      fetchAllRows<VendorCost>('vendor_costs', selectedProject, 'cost_date'),
+    ]).then(([ts, ex, vc]) => {
+      setTimesheet(ts)
+      setExpenses(ex)
+      setVendorCosts(vc)
+    }).catch(() => toast('Failed to load records', 'error'))
+      .finally(() => setLoading(false))
   }, [selectedProject, refreshKey])
 
-  // Batch options
-  const tsBatches = useMemo(() => [...new Set(timesheet.map(r => r.import_batch_id).filter(Boolean))], [timesheet])
-  const exBatches = useMemo(() => [...new Set(expenses.map(r => r.import_batch_id).filter(Boolean))], [expenses])
+  const tsFacets = useMemo(() =>
+    buildFacets(timesheet, TS_FACETS, tsSel, debouncedSearch,
+      r => [r.consultant_name, r.phase, r.task_description, r.import_batch_id]),
+    [timesheet, tsSel, debouncedSearch])
 
-  const filteredTs = useMemo(() =>
-    batchFilter ? timesheet.filter(r => r.import_batch_id === batchFilter) : timesheet,
-    [timesheet, batchFilter])
+  const exFacets = useMemo(() =>
+    buildFacets(expenses, EX_FACETS, exSel, debouncedSearch,
+      r => [r.identifier, r.company_name, r.country, r.project_code_name, r.sales_person, r.pm, r.resource, r.category, r.currency, r.import_batch_id]),
+    [expenses, exSel, debouncedSearch])
 
-  const filteredEx = useMemo(() =>
-    batchFilter ? expenses.filter(r => r.import_batch_id === batchFilter) : expenses,
-    [expenses, batchFilter])
+  const filteredTs = tsFacets.filtered
+  const filteredEx = exFacets.filtered
+
+  // Timesheet tab shows hours summarised per team member, not per line
+  const tsSummary = useMemo(() => {
+    const map = new Map<string, TsSummary>()
+    for (const r of filteredTs) {
+      const name = r.consultant_name || '—'
+      const cur = map.get(name)
+      if (!cur) {
+        map.set(name, { name, entries: 1, hours: r.hours ?? 0, firstDate: r.entry_date, lastDate: r.entry_date })
+      } else {
+        cur.entries += 1
+        cur.hours += r.hours ?? 0
+        if (r.entry_date < cur.firstDate) cur.firstDate = r.entry_date
+        if (r.entry_date > cur.lastDate) cur.lastDate = r.entry_date
+      }
+    }
+    return [...map.values()].sort((a, b) => b.hours - a.hours)
+  }, [filteredTs])
 
   // KPIs
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
   const totalCost = filteredTs.reduce((s, r) => s + (r.labour_cost_sgd ?? 0), 0)
-  const totalBill = filteredTs.reduce((s, r) => s + (r.billable_value_sgd ?? 0), 0)
   const totalExpSgd = filteredEx.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
+  const totalVendorSgd = vendorCosts.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
+  const sortedVendorCosts = useMemo(() => [...vendorCosts].sort((a, b) => b.cost_date.localeCompare(a.cost_date)), [vendorCosts])
 
-  const displayTs = showAllTs ? filteredTs : filteredTs.slice(0, 50)
-  const displayEx = showAllEx ? filteredEx : filteredEx.slice(0, 50)
+  const activeSel = tab === 'timesheet' ? tsSel : tab === 'expenses' ? exSel : {}
+  const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
+  const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
 
-  async function deleteTimesheetRow(id: number) {
-    const { error } = await createClient().from('timesheet_entries').delete().eq('id', id)
+  async function syncClickUp() {
+    if (!selectedProject) return
+    setSyncing(true)
+    try {
+      const res = await fetch(`/api/sync-clickup?projectId=${selectedProject}`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Sync failed')
+      toast(`Synced ${json.rows ?? 0} entries from ClickUp (last ${json.windowDays} days)`, 'success')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Sync failed', 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function addVendorCost() {
+    if (!selectedProject) return
+    const amount = parseFloat(vendorForm.amount_sgd)
+    if (!vendorForm.vendor_name.trim()) { toast('Vendor name is required', 'error'); return }
+    if (!vendorForm.cost_date) { toast('Date is required', 'error'); return }
+    if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return }
+    setVendorSaving(true)
+    try {
+      const { data, error } = await createClient().from('vendor_costs').insert({
+        project_id: selectedProject,
+        vendor_name: vendorForm.vendor_name.trim(),
+        description: vendorForm.description.trim() || null,
+        cost_date: vendorForm.cost_date,
+        amount_sgd: amount,
+      }).select().single()
+      if (error) throw error
+      setVendorCosts(prev => [...prev, data as VendorCost])
+      setVendorForm({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
+      toast('Vendor cost added', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to add vendor cost', 'error')
+    } finally {
+      setVendorSaving(false)
+    }
+  }
+
+  async function deleteVendorCost(id: number) {
+    const { error } = await createClient().from('vendor_costs').delete().eq('id', id)
     if (error) { toast(error.message, 'error'); return }
-    setTimesheet(prev => prev.filter(r => r.id !== id))
+    setVendorCosts(prev => prev.filter(r => r.id !== id))
     toast('Row deleted', 'success')
   }
 
@@ -113,20 +236,97 @@ export default function RecordsPage() {
     toast('Row deleted', 'success')
   }
 
-  async function deleteBatch(batchId: string, type: 'timesheet' | 'expenses') {
+  async function deleteBatch(batchId: string) {
     if (!confirm(`Delete all rows for batch "${batchId}"?`)) return
-    if (type === 'timesheet') {
-      const { error } = await createClient().from('timesheet_entries').delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
-      if (error) { toast(error.message, 'error'); return }
+    const table = tab === 'timesheet' ? 'timesheet_entries' : 'expense_entries'
+    const { error } = await createClient().from(table).delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
+    if (error) { toast(error.message, 'error'); return }
+    if (tab === 'timesheet') {
       setTimesheet(prev => prev.filter(r => r.import_batch_id !== batchId))
+      setTsSel(s => ({ ...s, batch: [] }))
     } else {
-      const { error } = await createClient().from('expense_entries').delete().eq('import_batch_id', batchId).eq('project_id', selectedProject!)
-      if (error) { toast(error.message, 'error'); return }
       setExpenses(prev => prev.filter(r => r.import_batch_id !== batchId))
+      setExSel(s => ({ ...s, batch: [] }))
     }
-    if (batchFilter === batchId) setBatchFilter('')
     toast('Batch deleted', 'success')
   }
+
+  function resetFilters() {
+    setSearch('')
+    setTsSel(emptySel(TS_FACETS))
+    setExSel(emptySel(EX_FACETS))
+  }
+
+  const tsColumns: DataColumn<TsSummary>[] = [
+    { key: 'member', label: 'Team Member', width: 220, sortValue: r => r.name.toLowerCase(),
+      render: r => <span className="font-medium text-slate-800 truncate block" title={r.name}>{r.name}</span> },
+    { key: 'entries', label: 'Entries', width: 90, align: 'right', sortValue: r => r.entries,
+      render: r => <span className="font-mono text-slate-500">{r.entries}</span> },
+    { key: 'first', label: 'First Entry', width: 120, sortValue: r => r.firstDate,
+      render: r => <span className="font-mono text-xs text-slate-500">{r.firstDate}</span> },
+    { key: 'last', label: 'Last Entry', width: 120, sortValue: r => r.lastDate,
+      render: r => <span className="font-mono text-xs text-slate-500">{r.lastDate}</span> },
+    { key: 'hours', label: 'Total Hrs', width: 110, align: 'right', sortValue: r => r.hours,
+      render: r => <span className="font-mono text-slate-800 font-semibold">{r.hours.toFixed(1)}</span> },
+  ]
+
+  const exColumns: DataColumn<ExpenseEntry>[] = [
+    { key: 'identifier', label: 'Identifier', width: 120, sortValue: r => r.identifier?.toLowerCase() || null,
+      render: r => <span className="font-mono text-xs text-slate-600 truncate block" title={r.identifier ?? ''}>{r.identifier || '—'}</span> },
+    { key: 'company', label: 'Company Name', width: 150, sortValue: r => r.company_name?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.company_name ?? ''}>{r.company_name || '—'}</span> },
+    { key: 'country', label: 'Country', width: 110, sortValue: r => r.country?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.country ?? ''}>{r.country || '—'}</span> },
+    { key: 'project_code', label: 'Project Code / Name', width: 220, sortValue: r => r.project_code_name?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.project_code_name ?? ''}>{r.project_code_name || '—'}</span> },
+    { key: 'prs_prj', label: 'PRS/PRJ', width: 90, sortValue: r => r.prs_prj?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.prs_prj ?? ''}>{r.prs_prj || '—'}</span> },
+    { key: 'sales_person', label: 'Sales Person', width: 130, sortValue: r => r.sales_person?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.sales_person ?? ''}>{r.sales_person || '—'}</span> },
+    { key: 'pm', label: 'PM', width: 120, sortValue: r => r.pm?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.pm ?? ''}>{r.pm || '—'}</span> },
+    { key: 'resource', label: 'Resource', width: 120, sortValue: r => r.resource?.toLowerCase() || null,
+      render: r => <span className="text-slate-700 truncate block" title={r.resource ?? ''}>{r.resource || '—'}</span> },
+    { key: 'category', label: 'Expense Category', width: 150, sortValue: r => r.category?.toLowerCase() || null,
+      render: r => <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium truncate max-w-full" title={r.category}>{r.category || '—'}</span> },
+    { key: 'date', label: 'Date', width: 110, sortValue: r => r.expense_date,
+      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.expense_date)}</span> },
+    { key: 'month', label: 'Month', width: 90, sortValue: r => r.month?.toLowerCase() || null,
+      render: r => <span className="text-xs text-slate-500 whitespace-nowrap">{r.month || '—'}</span> },
+    { key: 'billable', label: 'Billable to Client', width: 100, align: 'center', sortValue: r => (r.billable_to_client ? 1 : 0),
+      render: r => r.billable_to_client
+        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">Yes</span>
+        : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500 font-medium">No</span> },
+    { key: 'ccy', label: 'Currency', width: 80, sortValue: r => r.currency || null,
+      render: r => <span className="text-slate-500 text-xs">{r.currency}</span> },
+    { key: 'amount', label: 'Amount (Actual)', width: 130, align: 'right', sortValue: r => r.amount_native,
+      render: r => <span className="font-mono text-slate-700">{r.amount_native?.toLocaleString()}</span> },
+    { key: 'sgd', label: 'Amount (SGD)', width: 120, align: 'right', sortValue: r => r.amount_sgd,
+      render: r => <span className="font-mono text-slate-800 font-medium">{r.amount_sgd != null ? fmt(r.amount_sgd) : '—'}</span> },
+    { key: 'del', label: '', width: 44,
+      render: r => (
+        <button onClick={() => deleteExpenseRow(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
+          <Trash2 size={13} />
+        </button>
+      ) },
+  ]
+
+  const vendorColumns: DataColumn<VendorCost>[] = [
+    { key: 'vendor', label: 'Vendor Name', width: 200, sortValue: r => r.vendor_name.toLowerCase(),
+      render: r => <span className="font-medium text-slate-800 truncate block" title={r.vendor_name}>{r.vendor_name}</span> },
+    { key: 'description', label: 'Description', width: 260, sortValue: r => r.description?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
+    { key: 'date', label: 'Date', width: 120, sortValue: r => r.cost_date,
+      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.cost_date)}</span> },
+    { key: 'amount', label: 'Amount (SGD)', width: 140, align: 'right', sortValue: r => r.amount_sgd,
+      render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
+    { key: 'del', label: '', width: 44,
+      render: r => (
+        <button onClick={() => deleteVendorCost(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
+          <Trash2 size={13} />
+        </button>
+      ) },
+  ]
 
   if (!selectedProject) {
     return (
@@ -145,9 +345,16 @@ export default function RecordsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Records</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Timesheet and expense entries for this project</p>
+          <p className="text-sm text-slate-400 mt-0.5">Timesheet, expense, and 3rd party vendor cost entries for this project</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={syncClickUp}
+            disabled={syncing || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            <Download size={12} className={syncing ? 'animate-bounce' : ''} /> {syncing ? 'Syncing…' : 'Sync ClickUp'}
+          </button>
           <button
             onClick={() => setRefreshKey(k => k + 1)}
             disabled={loading}
@@ -156,186 +363,210 @@ export default function RecordsPage() {
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
-        {/* Batch filter */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">Filter batch:</label>
-          <select
-            value={batchFilter}
-            onChange={e => setBatchFilter(e.target.value)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          >
-            <option value="">All batches</option>
-            {(tab === 'timesheet' ? tsBatches : exBatches).map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
-          {batchFilter && (
-            <button
-              onClick={() => deleteBatch(batchFilter, tab)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
-            >
-              <Trash2 size={12} /> Delete batch
-            </button>
-          )}
-        </div>
       </div>
 
       {/* KPI row */}
       {tab === 'timesheet' ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <KpiCard label="Total Hours" value={totalHours.toFixed(1) + ' h'} sub={`${filteredTs.length} entries`} />
-          <KpiCard label="Labour Cost" value={fmt(totalCost)} />
-          <KpiCard label="Billable Value" value={fmt(totalBill)} />
+          <KpiCard label="Manpower Cost" value={fmt(totalCost)} />
         </div>
-      ) : (
+      ) : tab === 'expenses' ? (
         <div className="grid grid-cols-3 gap-4">
           <KpiCard label="Total Expenses (SGD)" value={fmt(totalExpSgd)} sub={`${filteredEx.length} entries`} />
-          <KpiCard label="Receipted" value={filteredEx.filter(r => r.receipted).length + ' / ' + filteredEx.length} />
+          <KpiCard label="Billable to Client" value={filteredEx.filter(r => r.billable_to_client).length + ' / ' + filteredEx.length} />
           <KpiCard label="Categories" value={String(new Set(filteredEx.map(r => r.category)).size)} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <KpiCard label="Total Vendor Cost (SGD)" value={fmt(totalVendorSgd)} sub={`${vendorCosts.length} entries`} />
+          <KpiCard label="Vendors" value={String(new Set(vendorCosts.map(r => r.vendor_name)).size)} />
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Search + facets */}
+      {tab !== 'vendor' && (
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…' : 'Search identifier, company, PM, resource…'}
+            aria-label="Search records"
+            className="w-full text-sm border border-slate-200 rounded-lg pl-8 pr-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+        {tab === 'timesheet'
+          ? TS_FACETS.map(f => (
+              <MultiSelect key={f.key} label={f.label} options={tsFacets.options[f.key]} selected={tsSel[f.key]}
+                onChange={values => setTsSel(s => ({ ...s, [f.key]: values }))} />
+            ))
+          : EX_FACETS.map(f => (
+              <MultiSelect key={f.key} label={f.label} options={exFacets.options[f.key]} selected={exSel[f.key]}
+                onChange={values => setExSel(s => ({ ...s, [f.key]: values }))} />
+            ))}
+        {hasFilter && (
+          <button onClick={resetFilters} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2">
+            <X size={12} /> Reset
+          </button>
+        )}
+        {singleBatch && (
+          <button
+            onClick={() => deleteBatch(singleBatch)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={12} /> Delete batch
+          </button>
+        )}
+        <span className="text-xs text-slate-400 whitespace-nowrap">
+          {tab === 'timesheet' ? `${filteredTs.length} / ${timesheet.length}` : `${filteredEx.length} / ${expenses.length}`}
+        </span>
+      </div>
+      )}
+
+      {/* Tabs + table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200">
           <button
-            onClick={() => { setTab('timesheet'); setBatchFilter('') }}
+            onClick={() => setTab('timesheet')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'timesheet' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <Clock size={14} /> Timesheet
             <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{timesheet.length}</span>
           </button>
           <button
-            onClick={() => { setTab('expenses'); setBatchFilter('') }}
+            onClick={() => setTab('expenses')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'expenses' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <DollarSign size={14} /> Expenses
             <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{expenses.length}</span>
+          </button>
+          <button
+            onClick={() => setTab('vendor')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'vendor' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <Building2 size={14} /> 3rd Party Vendor
+            <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{vendorCosts.length}</span>
           </button>
         </div>
 
         {loading ? (
           <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
         ) : tab === 'timesheet' ? (
-          <>
-            {filteredTs.length === 0 ? (
-              <div className="py-16 text-center text-sm text-slate-400">No timesheet entries found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200">
-                    <tr>
-                      {['Date', 'Consultant', 'Phase', 'Task', 'Hrs', 'Cost Rate', 'Labour Cost', 'Bill Rate', 'Bill Value', 'Batch', ''].map(h => (
-                        <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap last:w-8">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayTs.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.entry_date}</td>
-                        <td className="px-3 py-2 whitespace-nowrap font-medium text-slate-800">{row.consultant_name || '—'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-500">{row.phase || '—'}</td>
-                        <td className="px-3 py-2 max-w-[180px] truncate text-slate-500" title={row.task_description}>{row.task_description || '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700">{row.hours?.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500">{row.cost_rate_sgd > 0 ? fmt(row.cost_rate_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700 font-medium">{row.labour_cost_sgd > 0 ? fmt(row.labour_cost_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500">{row.bill_rate_sgd > 0 ? fmt(row.bill_rate_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-teal-700 font-medium">{row.billable_value_sgd > 0 ? fmt(row.billable_value_sgd) : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-slate-400 max-w-[100px] truncate" title={row.import_batch_id}>{row.import_batch_id || '—'}</td>
-                        <td className="px-3 py-2">
-                          <button onClick={() => deleteTimesheetRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {filteredTs.length > 0 && (
-                    <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-semibold text-slate-700">
-                      <tr>
-                        <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Totals</td>
-                        <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
-                        <td />
-                        <td className="px-3 py-2 text-right font-mono">{fmt(totalCost)}</td>
-                        <td />
-                        <td className="px-3 py-2 text-right font-mono text-teal-700">{fmt(totalBill)}</td>
-                        <td colSpan={2} />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-            {filteredTs.length > 50 && (
-              <div className="px-4 py-3 border-t border-slate-100">
-                <button onClick={() => setShowAllTs(v => !v)} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                  {showAllTs ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {filteredTs.length} rows</>}
-                </button>
-              </div>
-            )}
-          </>
+          filteredTs.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              {hasFilter ? 'No timesheet entries match the current filters' : 'No timesheet entries found'}
+            </div>
+          ) : (
+            <DataTable
+              key="timesheet"
+              columns={tsColumns}
+              rows={tsSummary}
+              rowKey={r => r.name}
+              rowCap={50}
+              footer={
+                <tr>
+                  <td className="px-3 py-2 text-slate-500">Totals · {tsSummary.length} team members</td>
+                  <td className="px-3 py-2 text-right font-mono">{filteredTs.length}</td>
+                  <td colSpan={2} />
+                  <td className="px-3 py-2 text-right font-mono">{totalHours.toFixed(1)}</td>
+                </tr>
+              }
+            />
+          )
+        ) : tab === 'expenses' ? (
+          filteredEx.length === 0 ? (
+            <div className="py-16 text-center text-sm text-slate-400">
+              {hasFilter ? 'No expense entries match the current filters' : 'No expense entries found'}
+            </div>
+          ) : (
+            <DataTable
+              key="expenses"
+              columns={exColumns}
+              rows={filteredEx}
+              rowKey={r => r.id}
+              rowCap={50}
+              footer={
+                <tr>
+                  <td colSpan={14} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {filteredEx.length} entries</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
+                  <td />
+                </tr>
+              }
+            />
+          )
         ) : (
-          <>
-            {filteredEx.length === 0 ? (
-              <div className="py-16 text-center text-sm text-slate-400">No expense entries found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide border-b border-slate-200">
-                    <tr>
-                      {['Date', 'Category', 'Description', 'Vendor', 'Amount', 'CCY', 'SGD', 'Paid By', 'Rcpt', 'Batch', ''].map(h => (
-                        <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap last:w-8">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {displayEx.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">{row.expense_date}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">{row.category || '—'}</span>
-                        </td>
-                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-500" title={row.description}>{row.description || '—'}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate text-slate-500" title={row.vendor}>{row.vendor || '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-700">{row.amount_native?.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-slate-500 text-xs">{row.currency}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-800 font-medium">{fmt(row.amount_sgd)}</td>
-                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{row.paid_by || '—'}</td>
-                        <td className="px-3 py-2 text-center">
-                          {row.receipted
-                            ? <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
-                            : <span className="inline-block w-2 h-2 rounded-full bg-slate-200" />}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-slate-400 max-w-[100px] truncate" title={row.import_batch_id}>{row.import_batch_id || '—'}</td>
-                        <td className="px-3 py-2">
-                          <button onClick={() => deleteExpenseRow(row.id)} className="text-slate-300 hover:text-red-500 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {filteredEx.length > 0 && (
-                    <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-semibold text-slate-700">
-                      <tr>
-                        <td colSpan={6} className="px-3 py-2 text-right text-slate-500">Total (SGD)</td>
-                        <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
-                        <td colSpan={4} />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+          <div>
+            {/* Simple add form */}
+            <div className="p-5 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Vendor Name</label>
+                <input
+                  value={vendorForm.vendor_name}
+                  onChange={e => setVendorForm(f => ({ ...f, vendor_name: e.target.value }))}
+                  placeholder="e.g. Acme Consulting"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
-            )}
-            {filteredEx.length > 50 && (
-              <div className="px-4 py-3 border-t border-slate-100">
-                <button onClick={() => setShowAllEx(v => !v)} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                  {showAllEx ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {filteredEx.length} rows</>}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                <input
+                  value={vendorForm.description}
+                  onChange={e => setVendorForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={vendorForm.cost_date}
+                  onChange={e => setVendorForm(f => ({ ...f, cost_date: e.target.value }))}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Amount (SGD)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={vendorForm.amount_sgd}
+                  onChange={e => setVendorForm(f => ({ ...f, amount_sgd: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <button
+                  onClick={addVendorCost}
+                  disabled={vendorSaving}
+                  className="flex items-center gap-1.5 justify-center w-full px-3 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                >
+                  <Plus size={14} /> {vendorSaving ? 'Adding…' : 'Add'}
                 </button>
               </div>
+            </div>
+
+            {vendorCosts.length === 0 ? (
+              <div className="py-16 text-center text-sm text-slate-400">No 3rd party vendor costs recorded yet</div>
+            ) : (
+              <DataTable
+                key="vendor"
+                columns={vendorColumns}
+                rows={sortedVendorCosts}
+                rowKey={r => r.id}
+                rowCap={50}
+                footer={
+                  <tr>
+                    <td colSpan={3} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {vendorCosts.length} entries</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
+                    <td />
+                  </tr>
+                }
+              />
             )}
-          </>
+          </div>
         )}
       </div>
 

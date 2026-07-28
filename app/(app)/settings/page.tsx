@@ -13,7 +13,6 @@ interface Settings {
   primary_color: string
   default_currency: string
   usd_to_idr: string
-  overhead_method: string
   overhead_rate_pct: string
   [key: string]: string
 }
@@ -68,8 +67,7 @@ export default function SettingsPage() {
     primary_color: '#0d9488',
     default_currency: 'SGD',
     usd_to_idr: '11700',
-    overhead_method: 'computed',
-    overhead_rate_pct: '12',
+    overhead_rate_pct: '30',
   })
   const [saved, setSaved] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState('')
@@ -259,7 +257,7 @@ export default function SettingsPage() {
 
       {/* ── SG&A ─────────────────────────────────────────────────────────────── */}
       <Section icon={Gauge} title="SG&A">
-        <Field label="Default SG&A %" hint="% of contract value deducted directly as project cost (per-project rate overrides this)">
+        <Field label="SG&A Rate %" hint="Deducted as project cost: rate × total revenue. Applies to all projects.">
           <div className="flex items-center gap-2">
             <input
               type="number" min="0" max="100" step="0.1"

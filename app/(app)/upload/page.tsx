@@ -540,7 +540,7 @@ function ProjectInfoCard({ onProjectImported }: { onProjectImported?: (id: strin
       // Do NOT include the id from parseProjectInfoXLS — that's a generated string like PRJ-xxx
       // PostgreSQL assigns the UUID
       const projectData = {
-        name: data.name, client_name: data.client_name,
+        name: data.name,
         project_manager: data.project_manager, start_date: data.start_date, end_date: data.end_date,
         contract_value: data.contract_value, contract_currency: data.contract_currency,
         billing_type: data.billing_type, phases: data.phases,
@@ -591,14 +591,12 @@ function ProjectInfoCard({ onProjectImported }: { onProjectImported?: (id: strin
   const kv: [string, string][] = data ? [
     ['Project ID', data.id],
     ['Project Name', data.name],
-    ['Client', data.client_name],
     ['Project Manager', data.project_manager],
     ['Start Date', data.start_date],
     ['End Date', data.end_date],
     ['Contract Value', data.contract_value ? fmt(data.contract_value, data.contract_currency || 'USD') : '—'],
     ['Billing Type', data.billing_type],
     ['Phases', data.phases],
-    ['SG&A %', data.overhead_rate_pct ? `${data.overhead_rate_pct}%` : '—'],
     ['Notes', data.notes || '—'],
   ] : []
 
@@ -757,37 +755,24 @@ export default function UploadPage() {
           {selectedProject ? (
             <>
               <CheckCircle size={16} className="text-blue-500 flex-shrink-0" />
-              <p className="text-sm text-blue-800">
+              <p className="text-sm text-blue-800 truncate" title={selectedName ?? selectedProject}>
                 Importing into <strong>{selectedName ?? selectedProject}</strong>
               </p>
             </>
           ) : (
             <>
               <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
-              <p className="text-sm text-amber-800">Select a project to import data into</p>
+              <p className="text-sm text-amber-800">Select a project in the top bar to import data into</p>
             </>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-xs text-slate-500 whitespace-nowrap">Project:</label>
-          <select
-            value={selectedProject ?? ''}
-            onChange={e => setSelectedProject(e.target.value || null)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option value="">— Choose project —</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button
-            onClick={loadProjects}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded hover:bg-white"
-            title="Refresh project list"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
+        <button
+          onClick={loadProjects}
+          className="text-slate-400 hover:text-slate-600 p-1.5 rounded hover:bg-white flex-shrink-0"
+          title="Refresh project list"
+        >
+          <RefreshCw size={14} />
+        </button>
       </div>
 
       {/* Upload cards */}

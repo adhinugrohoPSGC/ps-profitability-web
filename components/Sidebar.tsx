@@ -3,13 +3,14 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Upload, FolderKanban, Users,
-  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck,
+  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck, ReceiptText,
 } from 'lucide-react'
 
 const NAV = [
   { key: 'dashboard', href: '/dashboard',  label: 'Dashboard',        icon: LayoutDashboard },
   { key: 'upload',    href: '/upload',     label: 'Upload Templates',  icon: Upload },
   { key: 'records',   href: '/records',    label: 'Records',           icon: ClipboardList },
+  { key: 'billing',   href: '/billing',    label: 'Billing',           icon: ReceiptText },
   { key: 'projects',  href: '/projects',   label: 'Projects',          icon: FolderKanban },
   { key: 'rate-card', href: '/rate-card',  label: 'Rate Card',         icon: Users },
   { key: 'reports',   href: '/reports',    label: 'Reports',           icon: FileBarChart2 },

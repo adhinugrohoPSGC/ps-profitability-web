@@ -113,7 +113,7 @@ export default function DashboardPage() {
     }
     return Object.values(map)
       .sort((a, b) => b.cost - a.cost)
-      .map(c => ({ ...c, shortName: c.name.split(' ').slice(-1)[0], cost: Math.round(c.cost) }))
+      .map(c => ({ ...c, cost: Math.round(c.cost) }))
   }, [timesheet])
 
   if (!selectedProject) return (
@@ -223,11 +223,11 @@ export default function DashboardPage() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Manpower Cost by Consultant</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={consultantData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">Manpower Cost</h3>
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={consultantData} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="shortName" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={80} />
               <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
               <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
             </BarChart>

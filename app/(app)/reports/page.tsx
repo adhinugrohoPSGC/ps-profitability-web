@@ -194,7 +194,7 @@ async function generateReport(opts: {
 
     const kpiData: [string, number][] = [
       ['Contract Value', revenue],
-      ['Labour Cost', labourCost],
+      ['Manpower Cost', labourCost],
       ['Direct Expenses', directExpenses],
       [`SG&A (${sgaRatePct}%)`, sga],
       ['Total Cost', totalCost],
@@ -215,9 +215,9 @@ async function generateReport(opts: {
     marginRow.getCell(2).fill = solidFill(marginArgb(grossMarginPct))
   }
 
-  // ── Sheet 2: Labour Detail ─────────────────────────────────────────────────
+  // ── Sheet 2: Manpower Detail ───────────────────────────────────────────────
   if (sections.labourByConsultant || sections.labourByPhase) {
-    const ws = wb.addWorksheet('Labour Detail')
+    const ws = wb.addWorksheet('Manpower Detail')
     ws.columns = [
       { key: 'date', width: 12 },
       { key: 'consultant', width: 22 },
@@ -230,7 +230,7 @@ async function generateReport(opts: {
       { key: 'billRate', width: 12 },
       { key: 'billable', width: 14 },
     ]
-    headerRow(ws, ['Date', 'Consultant', 'Role', 'Phase', 'Task', 'Hours', 'Cost Rate', 'Labour Cost', 'Bill Rate', 'Billable Value'])
+    headerRow(ws, ['Date', 'Consultant', 'Role', 'Phase', 'Task', 'Hours', 'Cost Rate', 'Manpower Cost', 'Bill Rate', 'Billable Value'])
 
     let totalHours = 0, totalLabour = 0, totalBillable = 0
     for (const e of timesheet) {
@@ -269,9 +269,9 @@ async function generateReport(opts: {
     applyBorder(tot, true)
   }
 
-  // ── Sheet 3: Labour by Consultant ──────────────────────────────────────────
+  // ── Sheet 3: Manpower by Consultant ────────────────────────────────────────
   if (sections.labourByConsultant) {
-    const ws = wb.addWorksheet('Labour by Consultant')
+    const ws = wb.addWorksheet('Manpower by Consultant')
     ws.columns = [
       { key: 'consultant', width: 24 },
       { key: 'role', width: 16 },
@@ -280,7 +280,7 @@ async function generateReport(opts: {
       { key: 'labourCost', width: 16 },
       { key: 'billable', width: 16 },
     ]
-    headerRow(ws, ['Consultant', 'Role', 'Total Hours', 'Avg Cost Rate', 'Total Labour Cost', 'Total Billable Value'])
+    headerRow(ws, ['Consultant', 'Role', 'Total Hours', 'Avg Cost Rate', 'Total Manpower Cost', 'Total Billable Value'])
 
     const consultantMap: Record<string, { role: string; hours: number; cost: number; billable: number }> = {}
     for (const e of timesheet) {
@@ -315,9 +315,9 @@ async function generateReport(opts: {
     applyBorder(tot, true)
   }
 
-  // ── Sheet 4: Labour by Phase ───────────────────────────────────────────────
+  // ── Sheet 4: Manpower by Phase ─────────────────────────────────────────────
   if (sections.labourByPhase) {
-    const ws = wb.addWorksheet('Labour by Phase')
+    const ws = wb.addWorksheet('Manpower by Phase')
     ws.columns = [
       { key: 'phase', width: 20 },
       { key: 'budgH', width: 14 },
@@ -522,8 +522,8 @@ export default function ReportsPage() {
   const selectedProj = projects.find(p => p.id === projectId)
 
   const sectionLabels: { key: keyof typeof sections; label: string }[] = [
-    { key: 'labourByConsultant', label: 'Labour Cost by Consultant' },
-    { key: 'labourByPhase', label: 'Labour Cost by Phase' },
+    { key: 'labourByConsultant', label: 'Manpower Cost by Consultant' },
+    { key: 'labourByPhase', label: 'Manpower Cost by Phase' },
     { key: 'expenseBreakdown', label: 'Expense Breakdown' },
     { key: 'overheadCalc', label: 'SG&A Calculation' },
     { key: 'budgetVsActual', label: 'Budget vs Actual' },
@@ -533,11 +533,11 @@ export default function ReportsPage() {
 
   const sheetList = [
     '1. Summary',
-    sections.labourByConsultant || sections.labourByPhase ? '2. Labour Detail' : null,
-    sections.labourByConsultant ? '3. Labour by Consultant' : null,
-    sections.labourByPhase ? '4. Labour by Phase' : null,
+    sections.labourByConsultant || sections.labourByPhase ? '2. Manpower Detail' : null,
+    sections.labourByConsultant ? '3. Manpower by Consultant' : null,
+    sections.labourByPhase ? '4. Manpower by Phase' : null,
     sections.expenseBreakdown ? '5. Expenses' : null,
-    sections.overheadCalc ? '6. Overhead' : null,
+    sections.overheadCalc ? '6. SG&A' : null,
     sections.budgetVsActual ? '7. Budget vs Actual' : null,
     sections.rateCard ? '8. Rate Card' : null,
   ].filter(Boolean) as string[]

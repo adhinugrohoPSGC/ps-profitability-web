@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2, Plus } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import { fetchAllRows } from '@/lib/fetchAll'
@@ -54,6 +54,14 @@ interface ExpenseEntry {
   import_batch_id: string
 }
 
+interface VendorCost {
+  id: number
+  vendor_name: string
+  description: string | null
+  cost_date: string
+  amount_sgd: number
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -101,26 +109,31 @@ const emptySel = (defs: { key: string }[]) => Object.fromEntries(defs.map(d => [
 export default function RecordsPage() {
   const { selectedProject } = useProject()
   const { toast } = useToast()
-  const [tab, setTab] = useState<'timesheet' | 'expenses'>('timesheet')
+  const [tab, setTab] = useState<'timesheet' | 'expenses' | 'vendor'>('timesheet')
   const [timesheet, setTimesheet] = useState<TimesheetEntry[]>([])
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const [vendorCosts, setVendorCosts] = useState<VendorCost[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncing, setSyncing] = useState(false)
+  const [vendorForm, setVendorForm] = useState({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
+  const [vendorSaving, setVendorSaving] = useState(false)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 200)
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
   const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
 
   useEffect(() => {
-    if (!selectedProject) { setTimesheet([]); setExpenses([]); return }
+    if (!selectedProject) { setTimesheet([]); setExpenses([]); setVendorCosts([]); return }
     setLoading(true)
     Promise.all([
       fetchAllRows<TimesheetEntry>('timesheet_entries', selectedProject, 'entry_date'),
       fetchAllRows<ExpenseEntry>('expense_entries', selectedProject, 'expense_date'),
-    ]).then(([ts, ex]) => {
+      fetchAllRows<VendorCost>('vendor_costs', selectedProject, 'cost_date'),
+    ]).then(([ts, ex, vc]) => {
       setTimesheet(ts)
       setExpenses(ex)
+      setVendorCosts(vc)
     }).catch(() => toast('Failed to load records', 'error'))
       .finally(() => setLoading(false))
   }, [selectedProject, refreshKey])
@@ -160,8 +173,10 @@ export default function RecordsPage() {
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
   const totalCost = filteredTs.reduce((s, r) => s + (r.labour_cost_sgd ?? 0), 0)
   const totalExpSgd = filteredEx.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
+  const totalVendorSgd = vendorCosts.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
+  const sortedVendorCosts = useMemo(() => [...vendorCosts].sort((a, b) => b.cost_date.localeCompare(a.cost_date)), [vendorCosts])
 
-  const activeSel = tab === 'timesheet' ? tsSel : exSel
+  const activeSel = tab === 'timesheet' ? tsSel : tab === 'expenses' ? exSel : {}
   const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
   const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
 
@@ -179,6 +194,39 @@ export default function RecordsPage() {
     } finally {
       setSyncing(false)
     }
+  }
+
+  async function addVendorCost() {
+    if (!selectedProject) return
+    const amount = parseFloat(vendorForm.amount_sgd)
+    if (!vendorForm.vendor_name.trim()) { toast('Vendor name is required', 'error'); return }
+    if (!vendorForm.cost_date) { toast('Date is required', 'error'); return }
+    if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return }
+    setVendorSaving(true)
+    try {
+      const { data, error } = await createClient().from('vendor_costs').insert({
+        project_id: selectedProject,
+        vendor_name: vendorForm.vendor_name.trim(),
+        description: vendorForm.description.trim() || null,
+        cost_date: vendorForm.cost_date,
+        amount_sgd: amount,
+      }).select().single()
+      if (error) throw error
+      setVendorCosts(prev => [...prev, data as VendorCost])
+      setVendorForm({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
+      toast('Vendor cost added', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to add vendor cost', 'error')
+    } finally {
+      setVendorSaving(false)
+    }
+  }
+
+  async function deleteVendorCost(id: number) {
+    const { error } = await createClient().from('vendor_costs').delete().eq('id', id)
+    if (error) { toast(error.message, 'error'); return }
+    setVendorCosts(prev => prev.filter(r => r.id !== id))
+    toast('Row deleted', 'success')
   }
 
   async function deleteExpenseRow(id: number) {
@@ -263,6 +311,23 @@ export default function RecordsPage() {
       ) },
   ]
 
+  const vendorColumns: DataColumn<VendorCost>[] = [
+    { key: 'vendor', label: 'Vendor Name', width: 200, sortValue: r => r.vendor_name.toLowerCase(),
+      render: r => <span className="font-medium text-slate-800 truncate block" title={r.vendor_name}>{r.vendor_name}</span> },
+    { key: 'description', label: 'Description', width: 260, sortValue: r => r.description?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
+    { key: 'date', label: 'Date', width: 120, sortValue: r => r.cost_date,
+      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.cost_date)}</span> },
+    { key: 'amount', label: 'Amount (SGD)', width: 140, align: 'right', sortValue: r => r.amount_sgd,
+      render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
+    { key: 'del', label: '', width: 44,
+      render: r => (
+        <button onClick={() => deleteVendorCost(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
+          <Trash2 size={13} />
+        </button>
+      ) },
+  ]
+
   if (!selectedProject) {
     return (
       <div className="flex-1 flex items-center justify-center text-slate-400">
@@ -280,7 +345,7 @@ export default function RecordsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Records</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Timesheet and expense entries for this project</p>
+          <p className="text-sm text-slate-400 mt-0.5">Timesheet, expense, and 3rd party vendor cost entries for this project</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -304,17 +369,23 @@ export default function RecordsPage() {
       {tab === 'timesheet' ? (
         <div className="grid grid-cols-2 gap-4">
           <KpiCard label="Total Hours" value={totalHours.toFixed(1) + ' h'} sub={`${filteredTs.length} entries`} />
-          <KpiCard label="Labour Cost" value={fmt(totalCost)} />
+          <KpiCard label="Manpower Cost" value={fmt(totalCost)} />
         </div>
-      ) : (
+      ) : tab === 'expenses' ? (
         <div className="grid grid-cols-3 gap-4">
           <KpiCard label="Total Expenses (SGD)" value={fmt(totalExpSgd)} sub={`${filteredEx.length} entries`} />
           <KpiCard label="Billable to Client" value={filteredEx.filter(r => r.billable_to_client).length + ' / ' + filteredEx.length} />
           <KpiCard label="Categories" value={String(new Set(filteredEx.map(r => r.category)).size)} />
         </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <KpiCard label="Total Vendor Cost (SGD)" value={fmt(totalVendorSgd)} sub={`${vendorCosts.length} entries`} />
+          <KpiCard label="Vendors" value={String(new Set(vendorCosts.map(r => r.vendor_name)).size)} />
+        </div>
       )}
 
       {/* Search + facets */}
+      {tab !== 'vendor' && (
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -352,6 +423,7 @@ export default function RecordsPage() {
           {tab === 'timesheet' ? `${filteredTs.length} / ${timesheet.length}` : `${filteredEx.length} / ${expenses.length}`}
         </span>
       </div>
+      )}
 
       {/* Tabs + table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -369,6 +441,13 @@ export default function RecordsPage() {
           >
             <DollarSign size={14} /> Expenses
             <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{expenses.length}</span>
+          </button>
+          <button
+            onClick={() => setTab('vendor')}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${tab === 'vendor' ? 'border-b-2 border-teal-500 text-teal-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <Building2 size={14} /> 3rd Party Vendor
+            <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{vendorCosts.length}</span>
           </button>
         </div>
 
@@ -396,7 +475,7 @@ export default function RecordsPage() {
               }
             />
           )
-        ) : (
+        ) : tab === 'expenses' ? (
           filteredEx.length === 0 ? (
             <div className="py-16 text-center text-sm text-slate-400">
               {hasFilter ? 'No expense entries match the current filters' : 'No expense entries found'}
@@ -417,6 +496,77 @@ export default function RecordsPage() {
               }
             />
           )
+        ) : (
+          <div>
+            {/* Simple add form */}
+            <div className="p-5 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Vendor Name</label>
+                <input
+                  value={vendorForm.vendor_name}
+                  onChange={e => setVendorForm(f => ({ ...f, vendor_name: e.target.value }))}
+                  placeholder="e.g. Acme Consulting"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                <input
+                  value={vendorForm.description}
+                  onChange={e => setVendorForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={vendorForm.cost_date}
+                  onChange={e => setVendorForm(f => ({ ...f, cost_date: e.target.value }))}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Amount (SGD)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={vendorForm.amount_sgd}
+                  onChange={e => setVendorForm(f => ({ ...f, amount_sgd: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <button
+                  onClick={addVendorCost}
+                  disabled={vendorSaving}
+                  className="flex items-center gap-1.5 justify-center w-full px-3 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                >
+                  <Plus size={14} /> {vendorSaving ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            </div>
+
+            {vendorCosts.length === 0 ? (
+              <div className="py-16 text-center text-sm text-slate-400">No 3rd party vendor costs recorded yet</div>
+            ) : (
+              <DataTable
+                key="vendor"
+                columns={vendorColumns}
+                rows={sortedVendorCosts}
+                rowKey={r => r.id}
+                rowCap={50}
+                footer={
+                  <tr>
+                    <td colSpan={3} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {vendorCosts.length} entries</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
+                    <td />
+                  </tr>
+                }
+              />
+            )}
+          </div>
         )}
       </div>
 

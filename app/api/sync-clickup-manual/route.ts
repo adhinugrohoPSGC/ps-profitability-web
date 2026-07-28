@@ -1,5 +1,5 @@
 // app/api/sync-clickup-manual/route.ts
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 // Module-level rate limit: 1 call per 60 seconds
 let lastCallMs = 0
@@ -17,6 +17,6 @@ export async function POST() {
   const headers: HeadersInit = process.env.CRON_SECRET
     ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
     : {}
-  const fakeReq = new Request('http://localhost/api/sync-clickup', { method: 'POST', headers })
-  return syncHandler(fakeReq as Parameters<typeof syncHandler>[0])
+  const fakeReq = new NextRequest('http://localhost/api/sync-clickup', { method: 'POST', headers })
+  return syncHandler(fakeReq)
 }

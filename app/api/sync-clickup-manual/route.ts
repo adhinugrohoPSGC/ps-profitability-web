@@ -1,13 +1,17 @@
 // app/api/sync-clickup-manual/route.ts
+export const maxDuration = 300
+
 import { NextRequest, NextResponse } from 'next/server'
 
-// Module-level rate limit: 1 call per 60 seconds
+// Module-level rate limit: full syncs 1/60s; single-project syncs 1/3s
 let lastCallMs = 0
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const projectId = req.nextUrl.searchParams.get('projectId')
+  const minGapMs = projectId ? 3_000 : 60_000
   const now = Date.now()
-  if (now - lastCallMs < 60_000) {
-    const waitSec = Math.ceil((60_000 - (now - lastCallMs)) / 1000)
+  if (now - lastCallMs < minGapMs) {
+    const waitSec = Math.ceil((minGapMs - (now - lastCallMs)) / 1000)
     return NextResponse.json({ error: `Rate limited — try again in ${waitSec}s` }, { status: 429 })
   }
   lastCallMs = now
@@ -17,6 +21,9 @@ export async function POST() {
   const headers: HeadersInit = process.env.CRON_SECRET
     ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
     : {}
-  const fakeReq = new NextRequest('http://localhost/api/sync-clickup', { method: 'POST', headers })
+  const url = projectId
+    ? `http://localhost/api/sync-clickup?projectId=${encodeURIComponent(projectId)}`
+    : 'http://localhost/api/sync-clickup'
+  const fakeReq = new NextRequest(url, { method: 'POST', headers })
   return syncHandler(fakeReq)
 }

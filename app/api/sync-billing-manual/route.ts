@@ -1,3 +1,5 @@
+export const maxDuration = 300
+
 import { NextRequest, NextResponse } from 'next/server'
 
 // Module-level rate limit: 1 call per 60 seconds

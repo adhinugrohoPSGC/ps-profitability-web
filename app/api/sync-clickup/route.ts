@@ -81,7 +81,15 @@ export async function POST(req: NextRequest) {
   const syncedProjects: string[] = []
   let totalRows = 0
 
+  // Time-box below the function limit so scheduled runs always return with
+  // partial progress instead of being killed. Random order spreads coverage
+  // across nights when there are more projects than one run can finish.
+  const deadlineMs = now + 250_000
+  if (!projectId) projects.sort(() => Math.random() - 0.5)
+  let timedOut = false
+
   for (const project of projects) {
+    if (Date.now() > deadlineMs) { timedOut = true; break }
     try {
       const entries = (await fetchClickUpTimeEntries(token, workspaceId, project.external_id, windowStartMs, now, memberIds))
         .filter(e => Number(e.duration) > 0)
@@ -141,5 +149,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ synced: syncedProjects.length, rows: totalRows, windowDays: SYNC_WINDOW_DAYS, projects: syncedProjects })
+  return NextResponse.json({
+    synced: syncedProjects.length, rows: totalRows, windowDays: SYNC_WINDOW_DAYS,
+    partial: timedOut, remaining: timedOut ? projects.length - syncedProjects.length : 0,
+    projects: syncedProjects,
+  })
 }

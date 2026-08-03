@@ -16,6 +16,7 @@ const TITLES: Record<string, string> = {
   '/billing':     'Billing Milestones',
   '/settings':    'Settings',
   '/admin/users': 'User Management',
+  '/admin/master': 'Master Data',
 }
 
 export default function TopBar() {

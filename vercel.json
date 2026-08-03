@@ -3,6 +3,10 @@
     {
       "path": "/api/sync-clickup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/sync-billing",
+      "schedule": "30 2 * * *"
     }
   ]
 }

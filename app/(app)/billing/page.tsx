@@ -357,6 +357,22 @@ export default function BillingPage() {
     return { projects, total }
   }, [pending])
 
+  const [syncBusy, setSyncBusy] = useState(false)
+  async function handleSheetSync() {
+    setSyncBusy(true)
+    try {
+      const res = await fetch('/api/sync-billing-manual', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      toast(`Synced ${json.milestones} milestones from the Google Sheet · ${json.valuesUpdated} project value${json.valuesUpdated === 1 ? '' : 's'} updated`, 'success')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Sheet sync failed', 'error')
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
       {/* Header */}
@@ -374,11 +390,19 @@ export default function BillingPage() {
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button
-            onClick={() => fileRef.current?.click()}
-            disabled={importBusy}
+            onClick={handleSheetSync}
+            disabled={syncBusy}
+            title="Pull the latest data from the PMO Google Sheet (also runs automatically every night)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
           >
-            {importBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Import
+            {syncBusy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from Sheet
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={importBusy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
+          >
+            {importBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Import file
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
         </div>

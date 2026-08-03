@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Upload, FolderKanban, Users,
-  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck, ReceiptText,
+  FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck, ReceiptText, Database,
 } from 'lucide-react'
 
 const NAV = [
@@ -17,9 +17,10 @@ const NAV = [
   { key: 'settings',  href: '/settings',   label: 'Settings',          icon: Settings },
 ]
 
-export default function Sidebar({ allowedMenus, showUsers = false }: {
+export default function Sidebar({ allowedMenus, showUsers = false, showMaster = false }: {
   allowedMenus?: string[] // undefined = all menus (admin)
   showUsers?: boolean
+  showMaster?: boolean
 }) {
   const pathname = usePathname()
   const nav = allowedMenus ? NAV.filter(item => allowedMenus.includes(item.key)) : NAV
@@ -51,6 +52,18 @@ export default function Sidebar({ allowedMenus, showUsers = false }: {
             </Link>
           )
         })}
+        {showMaster && (
+          <Link href="/admin/master"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname === '/admin/master'
+                ? 'bg-accent text-white'
+                : 'text-white/60 hover:bg-sidebar-hover hover:text-white'
+            }`}
+          >
+            <Database size={16} />
+            <span className="flex-1">Admin: Master Data</span>
+          </Link>
+        )}
         {showUsers && (
           <Link href="/admin/users"
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${

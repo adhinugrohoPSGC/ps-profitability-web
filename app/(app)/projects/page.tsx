@@ -26,6 +26,7 @@ interface Project {
   notes: string | null
   external_id: string | null
   created_at: string
+  master_project?: { project_code: string | null; region: string | null; product: string | null } | null
 }
 
 interface BudgetLine {
@@ -37,12 +38,12 @@ interface BudgetLine {
   budgeted_revenue: number
 }
 
-type ProjectForm = Omit<Project, 'id' | 'created_at'>
+type ProjectForm = Omit<Project, 'id' | 'created_at' | 'contract_value' | 'master_project'>
 
 function defaultForm(): ProjectForm {
   return {
     name: '', project_manager: '',
-    start_date: '', end_date: '', contract_value: 0,
+    start_date: '', end_date: '',
     contract_currency: 'SGD', billing_type: 'Fixed Fee',
     phases: 'Discovery,Design,Build,Testing,Go-Live',
     status: 'active', notes: '', external_id: null,
@@ -88,7 +89,7 @@ export default function ProjectsPage() {
     setLoading(true)
     try {
       const { data, error } = await createClient()
-        .from('projects').select('*').order('created_at', { ascending: false })
+        .from('projects').select('*, master_project(project_code, region, product)').order('created_at', { ascending: false })
       if (error) throw error
       setProjects((data as Project[]) ?? [])
     } catch { toast('Failed to load projects', 'error') }
@@ -109,7 +110,7 @@ export default function ProjectsPage() {
     setForm({
       name: p.name, project_manager: p.project_manager ?? '',
       start_date: p.start_date ?? '', end_date: p.end_date ?? '',
-      contract_value: p.contract_value, contract_currency: p.contract_currency,
+      contract_currency: p.contract_currency,
       billing_type: p.billing_type, phases: p.phases,
       status: p.status, notes: p.notes ?? '', external_id: p.external_id ?? null,
     })
@@ -136,7 +137,7 @@ export default function ProjectsPage() {
         if (error) throw error
         toast('Project updated', 'success')
       } else {
-        const { error } = await supabase.from('projects').insert(payload)
+        const { error } = await supabase.from('projects').insert({ ...payload, contract_value: 0 })
         if (error) throw error
         toast('Project created', 'success')
       }
@@ -220,6 +221,8 @@ export default function ProjectsPage() {
 
   const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500'
 
+  const editingProject = editingId ? projects.find(p => p.id === editingId) ?? null : null
+
   const projectColumns: DataColumn<Project>[] = [
     { key: 'name', label: 'Project', width: 340, sortValue: p => p.name.toLowerCase(),
       render: p => (
@@ -240,7 +243,9 @@ export default function ProjectsPage() {
       ) },
     { key: 'billing_type', label: 'Billing', width: 100, sortValue: p => p.billing_type,
       render: p => <span className="text-slate-500 text-xs">{p.billing_type}</span> },
-    { key: 'contract', label: 'Contract', width: 130, align: 'right', sortValue: p => p.contract_value || null,
+    { key: 'region', label: 'Region', width: 100, sortValue: p => p.master_project?.region ?? null,
+      render: p => <span className="text-slate-500 text-xs">{p.master_project?.region ?? '—'}</span> },
+    { key: 'contract', label: 'Billing Value', width: 130, align: 'right', sortValue: p => p.contract_value || null,
       render: p => <span className="font-mono text-slate-800 font-medium">{p.contract_value > 0 ? fmt(p.contract_value, p.contract_currency) : '—'}</span> },
     { key: 'start', label: 'Start', width: 110, sortValue: p => p.start_date,
       render: p => <span className="font-mono text-xs text-slate-500">{p.start_date ?? '—'}</span> },
@@ -325,6 +330,11 @@ export default function ProjectsPage() {
       {/* Project Form Modal */}
       <Modal open={showModal} title={editingId ? 'Edit Project' : 'New Project'} onClose={() => setShowModal(false)} maxWidth="max-w-2xl">
         <div className="space-y-3">
+          {editingProject?.master_project && (
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              Master: {editingProject.master_project.project_code ?? '—'} · {editingProject.master_project.region ?? '—'} · {editingProject.master_project.product ?? '—'}
+            </p>
+          )}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Project Name *</label>
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className={inputCls} />
@@ -341,10 +351,6 @@ export default function ProjectsPage() {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Go Live Date</label>
               <input type="date" value={form.end_date ?? ''} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Contract Value</label>
-              <input type="number" min="0" value={form.contract_value} onChange={e => setForm(p => ({ ...p, contract_value: parseFloat(e.target.value) || 0 }))} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Currency</label>

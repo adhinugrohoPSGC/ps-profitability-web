@@ -216,6 +216,111 @@ export function parseProjectInfoXLS(buffer: ArrayBuffer): ProjectInfoData {
   }
 }
 
+// ── Billing milestones (PMO ERP Service Billing Milestone tracking) ────────
+
+export interface BillingMilestoneRow {
+  source_row: number
+  project_owner: string
+  country: string
+  project_manager: string
+  project_name: string
+  quotation_source: string
+  billing_milestone: string
+  billing_status: string
+  invoice_status: string
+  quarter: string
+  commitment: string
+  baseline_date: string
+  estimate_date: string
+  invoice_date: string
+  invoice_due_date: string
+  amount_sgd: number
+}
+
+// Amounts in the billing sheet may arrive as formatted strings ("4,051.21")
+function toAmount(v: unknown): number {
+  if (typeof v === 'number') return isNaN(v) ? 0 : v
+  const n = parseFloat(String(v ?? '').replace(/[,$\s]/g, ''))
+  return isNaN(n) ? 0 : n
+}
+
+export function parseBillingMilestonesXLS(buffer: ArrayBuffer): { rows: BillingMilestoneRow[]; warnings: string[] } {
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
+  const sheetName = wb.SheetNames.find(n => /billing|milestone/i.test(n)) ?? wb.SheetNames[0]
+  const ws = wb.Sheets[sheetName]
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' }) as unknown[][]
+
+  // Headers are not necessarily on row 1 — scan for the row containing "Project Name"
+  const headerIdx = grid.findIndex(row =>
+    Array.isArray(row) && row.some(c => norm(String(c ?? '')) === 'projectname'))
+  if (headerIdx === -1) {
+    throw new Error(`Could not find a header row containing "Project Name" in sheet "${sheetName}"`)
+  }
+
+  const headers = grid[headerIdx].map(h => norm(String(h ?? '')))
+  const colIdx = (candidates: string[]): number => {
+    for (const c of candidates) {
+      const i = headers.indexOf(norm(c))
+      if (i !== -1) return i
+    }
+    return -1
+  }
+
+  const cols = {
+    project_owner: colIdx(['Project Owner', 'Owner']),
+    country: colIdx(['Country']),
+    project_manager: colIdx(['Project Manager', 'PM']),
+    project_name: colIdx(['Project Name']),
+    quotation_source: colIdx(['Quotation Source']),
+    billing_milestone: colIdx(['Billing Milestone', 'Milestone']),
+    billing_status: colIdx(['Billing Status']),
+    invoice_status: colIdx(['Invoice Status']),
+    quarter: colIdx(['Quarter']),
+    commitment: colIdx(['Commitment']),
+    baseline_date: colIdx(['Baseline Date', 'Baseline']),
+    estimate_date: colIdx(['Estimate Date', 'Estimate']),
+    invoice_date: colIdx(['Invoice Date']),
+    invoice_due_date: colIdx(['Invoice Due Date', 'Due Date']),
+    amount_sgd: colIdx(['Amount SGD', 'Amount (SGD)', 'Amount']),
+  }
+
+  const cell = (row: unknown[], i: number): unknown => (i === -1 ? undefined : row[i])
+  const rows: BillingMilestoneRow[] = []
+  const warnings: string[] = []
+
+  for (let i = headerIdx + 1; i < grid.length; i++) {
+    const r = grid[i]
+    if (!Array.isArray(r)) continue
+    const projectName = toStr(cell(r, cols.project_name))
+    if (!projectName) continue // blank / spacer / subtotal rows
+
+    rows.push({
+      source_row: i + 1, // sheet_to_json header:1 index 0 = Excel row 1
+      project_owner: toStr(cell(r, cols.project_owner)),
+      country: toStr(cell(r, cols.country)),
+      project_manager: toStr(cell(r, cols.project_manager)),
+      project_name: projectName,
+      quotation_source: toStr(cell(r, cols.quotation_source)),
+      billing_milestone: toStr(cell(r, cols.billing_milestone)),
+      billing_status: toStr(cell(r, cols.billing_status)),
+      invoice_status: toStr(cell(r, cols.invoice_status)),
+      quarter: toStr(cell(r, cols.quarter)),
+      commitment: toStr(cell(r, cols.commitment)),
+      baseline_date: toDate(cell(r, cols.baseline_date)),
+      estimate_date: toDate(cell(r, cols.estimate_date)),
+      invoice_date: toDate(cell(r, cols.invoice_date)),
+      invoice_due_date: toDate(cell(r, cols.invoice_due_date)),
+      amount_sgd: toAmount(cell(r, cols.amount_sgd)),
+    })
+  }
+
+  const missing = Object.entries(cols).filter(([, v]) => v === -1).map(([k]) => k)
+  if (missing.length) warnings.push(`Columns not found in sheet "${sheetName}": ${missing.join(', ')}`)
+  if (rows.length === 0) warnings.push(`No rows with a Project Name found in sheet "${sheetName}"`)
+
+  return { rows, warnings }
+}
+
 // ── Blank template generators ──────────────────────────────────────────────
 
 export function generateTimesheetTemplate(): ArrayBuffer {

@@ -1,8 +1,11 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ReceiptText, ChevronDown, ChevronUp, RefreshCw, Search, ArrowUp, ArrowDown, X } from 'lucide-react'
+import { ReceiptText, ChevronDown, ChevronUp, RefreshCw, Search, ArrowUp, ArrowDown, X, Upload, Loader2, AlertTriangle } from 'lucide-react'
 import MultiSelect, { type FacetOption } from '@/components/MultiSelect'
+import Modal from '@/components/Modal'
+import { useToast } from '@/components/Toast'
+import { parseBillingMilestonesXLS, type BillingMilestoneRow } from '@/lib/parseTemplates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,6 +121,12 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
 
 const ROW_CAP = 100
 const MIN_COL_WIDTH = 56
+const IMPORT_CHUNK = 500
+
+// Only pass through values Postgres will accept for a DATE column
+function toDbDate(s: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -135,6 +144,10 @@ export default function BillingPage() {
     Object.fromEntries(COLUMNS.map(c => [c.key, c.width])))
   const [showAll, setShowAll] = useState(false)
   const resizing = useRef(false)
+  const { toast } = useToast()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pending, setPending] = useState<{ rows: BillingMilestoneRow[]; warnings: string[]; fileName: string } | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
 
   useEffect(() => {
     setLoading(true); setError('')
@@ -246,6 +259,104 @@ export default function BillingPage() {
     document.addEventListener('mouseup', up)
   }
 
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const buf = ev.target?.result
+      if (!buf) return
+      try {
+        const { rows: parsed, warnings } = parseBillingMilestonesXLS(buf as ArrayBuffer)
+        if (parsed.length === 0) {
+          toast(warnings[0] ?? 'No billing milestone rows found in the file', 'warning')
+          return
+        }
+        setPending({ rows: parsed, warnings, fileName: file.name })
+      } catch (err) {
+        toast(`Parse error: ${String(err)}`, 'error')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  async function doImport() {
+    if (!pending) return
+    setImportBusy(true)
+    const sb = createClient()
+    try {
+      // 1. Replace table contents
+      const { error: delErr } = await sb.from('billing_milestones').delete().gte('id', 0)
+      if (delErr) throw new Error(`Delete failed: ${delErr.message}`)
+
+      const payload = pending.rows.map(r => ({
+        source_row: r.source_row,
+        project_owner: r.project_owner || null,
+        country: r.country || null,
+        project_manager: r.project_manager || null,
+        project_name: r.project_name,
+        quotation_source: r.quotation_source || null,
+        billing_milestone: r.billing_milestone || null,
+        billing_status: r.billing_status || null,
+        invoice_status: r.invoice_status || null,
+        quarter: r.quarter || null,
+        commitment: r.commitment || null,
+        baseline_date: toDbDate(r.baseline_date),
+        estimate_date: toDbDate(r.estimate_date),
+        invoice_date: toDbDate(r.invoice_date),
+        invoice_due_date: toDbDate(r.invoice_due_date),
+        amount_sgd: r.amount_sgd,
+      }))
+      for (let i = 0; i < payload.length; i += IMPORT_CHUNK) {
+        const { error } = await sb.from('billing_milestones').insert(payload.slice(i, i + IMPORT_CHUNK))
+        if (error) throw new Error(`Insert failed (rows ${i + 1}–${Math.min(i + IMPORT_CHUNK, payload.length)}): ${error.message}`)
+      }
+
+      // 2. Refresh derived contract values on linked projects
+      const sums = new Map<string, number>()
+      for (const r of pending.rows) {
+        sums.set(r.project_name, (sums.get(r.project_name) ?? 0) + r.amount_sgd)
+      }
+      const { data: projData, error: projErr } = await sb
+        .from('projects')
+        .select('id, contract_value, master_project_id, master_project(billing_sheet_name)')
+        .not('master_project_id', 'is', null)
+      if (projErr) throw new Error(`Contract value refresh failed: ${projErr.message}`)
+      const projs = (projData ?? []) as unknown as {
+        id: string
+        contract_value: number | null
+        master_project_id: string | null
+        master_project: { billing_sheet_name: string | null } | null
+      }[]
+      let updated = 0
+      for (const p of projs) {
+        const sheetName = p.master_project?.billing_sheet_name
+        if (!sheetName) continue
+        const newValue = sums.get(sheetName)
+        if (newValue === undefined || newValue === (p.contract_value ?? null)) continue
+        const { error } = await sb.from('projects').update({ contract_value: newValue }).eq('id', p.id)
+        if (error) throw new Error(`Contract value update failed for project ${p.id}: ${error.message}`)
+        updated++
+      }
+
+      toast(`Imported ${payload.length} milestones${updated ? ` · updated ${updated} contract value${updated === 1 ? '' : 's'}` : ''}`, 'success')
+      setPending(null)
+      setRefreshKey(k => k + 1) // 3. Reload the billing list
+    } catch (err) {
+      toast(err instanceof Error ? err.message : `Import failed: ${String(err)}`, 'error')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  const pendingSummary = useMemo(() => {
+    if (!pending) return null
+    const projects = new Set(pending.rows.map(r => r.project_name)).size
+    const total = pending.rows.reduce((s, r) => s + r.amount_sgd, 0)
+    return { projects, total }
+  }, [pending])
+
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
       {/* Header */}
@@ -254,13 +365,23 @@ export default function BillingPage() {
           <h1 className="text-xl font-bold text-slate-800">Billing Milestones</h1>
           <p className="text-sm text-slate-400 mt-0.5">From the PMO ERP Service Billing Milestone tracking sheet</p>
         </div>
-        <button
-          onClick={() => setRefreshKey(k => k + 1)}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setRefreshKey(k => k + 1)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={importBusy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+          >
+            {importBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Import
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+        </div>
       </div>
 
       {/* KPI row */}
@@ -403,6 +524,57 @@ export default function BillingPage() {
           </div>
         )}
       </div>
+
+      {/* Import confirmation modal */}
+      <Modal
+        open={pending !== null}
+        title="Replace Billing Milestones"
+        onClose={() => { if (!importBusy) setPending(null) }}
+      >
+        {pending && pendingSummary && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              <strong>{pending.fileName}</strong> contains{' '}
+              <strong>{pending.rows.length} milestone{pending.rows.length === 1 ? '' : 's'}</strong> across{' '}
+              <strong>{pendingSummary.projects} project{pendingSummary.projects === 1 ? '' : 's'}</strong>, totalling{' '}
+              <strong className="font-mono">{fmtSgd(pendingSummary.total)}</strong>.
+            </p>
+            <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">
+                Importing will <strong>delete all {rows.length} existing milestones</strong> and replace them with
+                the uploaded data. Linked project contract values will be recalculated.
+              </p>
+            </div>
+            {pending.warnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
+                {pending.warnings.map((w, i) => (
+                  <p key={i} className="text-xs text-amber-700 flex items-center gap-1.5">
+                    <AlertTriangle size={12} className="flex-shrink-0" />{w}
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => setPending(null)}
+                disabled={importBusy}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={doImport}
+                disabled={importBusy}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+              >
+                {importBusy && <Loader2 size={14} className="animate-spin" />}
+                {importBusy ? 'Importing…' : `Replace & Import (${pending.rows.length} rows)`}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

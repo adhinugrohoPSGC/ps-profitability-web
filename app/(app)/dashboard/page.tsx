@@ -23,7 +23,7 @@ interface TimesheetEntry {
 }
 interface ExpenseEntry { id: number; category: string; amount_sgd: number; expense_date: string | null }
 interface VendorCost { id: number; amount_sgd: number; cost_date: string | null; vendor_name: string | null; description: string | null }
-interface BillingRow { amount_sgd: number | null }
+interface BillingRow { amount_sgd: number | null; billing_milestone: string | null; invoice_status: string | null }
 interface Settings { overhead_rate_pct?: string; [key: string]: string | undefined }
 
 const DEFAULT_SGA_RATE_PCT = 30
@@ -50,7 +50,18 @@ function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct 
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
 const COST_COLORS = { manpower: '#0d9488', expenses: '#3b82f6', vendor: '#8b5cf6', sga: '#f59e0b' }
 
-type DrillSegment = 'Manpower Cost' | 'Expenses' | '3rd Party Vendor Cost' | 'SG&A'
+type DrillSegment =
+  | 'Manpower Cost' | 'Expenses' | '3rd Party Vendor Cost' | 'SG&A'
+  | 'Total Revenue' | 'Gross Profit' | 'Net Profit' | 'Total Cost'
+
+function CalcRow({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div className={`flex items-center justify-between px-3 py-2 ${bold ? 'bg-slate-50 font-semibold' : ''}`}>
+      <span className={bold ? 'text-slate-700' : 'text-slate-500'}>{label}</span>
+      <span className={bold ? 'text-slate-900' : 'font-medium text-slate-800'}>{value}</span>
+    </div>
+  )
+}
 
 export default function DashboardPage() {
   const { selectedProject } = useProject()
@@ -97,8 +108,9 @@ export default function DashboardPage() {
           .eq('id', projRow.master_project_id).single()
         if (master?.billing_sheet_name) {
           const { data: b } = await supabase
-            .from('billing_milestones').select('amount_sgd')
+            .from('billing_milestones').select('amount_sgd, billing_milestone, invoice_status')
             .eq('project_name', master.billing_sheet_name)
+            .order('source_row')
           billingRows = (b as BillingRow[]) ?? []
         }
       }
@@ -248,33 +260,35 @@ export default function DashboardPage() {
         </span>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — click any card for the calculation breakdown */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Total Revenue', value: fmt(revenue), sub: revenueFromBilling ? 'From billing milestones' : `${project?.billing_type ?? 'Fixed Fee'} (no billing rows yet)`, icon: DollarSign, subClass: 'bg-teal-50 text-teal-700' },
-          { label: 'SG&A', value: fmt(sga), sub: `${sgaRatePct}% of revenue`, icon: TrendingDown, subClass: 'text-slate-400' },
-          { label: 'Gross Profit', value: fmt(grossProfit), sub: 'Revenue − SG&A', icon: TrendingUp, valueClass: grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500', subClass: 'text-slate-400' },
-          { label: 'Net Profit', value: fmt(netProfit), sub: 'Gross Profit − Total Cost', icon: BarChart2, valueClass: marginColor(revenue > 0 ? (netProfit / revenue) * 100 : 0), subClass: 'text-slate-400' },
+          { label: 'Total Revenue' as DrillSegment, value: fmt(revenue), sub: revenueFromBilling ? `From billing milestones (${billing.length})` : `${project?.billing_type ?? 'Fixed Fee'} (no billing rows yet)`, icon: DollarSign, subClass: 'bg-teal-50 text-teal-700' },
+          { label: 'SG&A' as DrillSegment, value: fmt(sga), sub: `${sgaRatePct}% of revenue`, icon: TrendingDown, subClass: 'text-slate-400' },
+          { label: 'Gross Profit' as DrillSegment, value: fmt(grossProfit), sub: pctOfRevenue(grossProfit), icon: TrendingUp, valueClass: grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500', subClass: 'text-slate-400' },
+          { label: 'Net Profit' as DrillSegment, value: fmt(netProfit), sub: pctOfRevenue(netProfit), icon: BarChart2, valueClass: marginColor(revenue > 0 ? (netProfit / revenue) * 100 : 0), subClass: 'text-slate-400' },
         ].map(({ label, value, sub, icon: Icon, subClass, valueClass }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
+          <button key={label} onClick={() => setDrill(label)}
+            className="bg-white rounded-xl border border-slate-200 p-5 text-left hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
               <Icon size={16} className="text-slate-400" />
             </div>
             <p className={`text-2xl font-bold text-slate-800 ${valueClass ?? ''}`}>{value}</p>
             {sub && <span className={`text-xs mt-1 inline-block px-1.5 py-0.5 rounded ${subClass ?? 'text-slate-400'}`}>{sub}</span>}
-          </div>
+          </button>
         ))}
       </div>
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Manpower Cost', value: manpowerCost, icon: DollarSign },
-          { label: 'Expenses', value: directExpenses, icon: TrendingDown },
-          { label: '3rd Party Vendor Cost', value: vendorCost, icon: TrendingUp },
-          { label: 'Total Cost', value: totalCost, icon: BarChart2 },
+          { label: 'Manpower Cost' as DrillSegment, value: manpowerCost, icon: DollarSign },
+          { label: 'Expenses' as DrillSegment, value: directExpenses, icon: TrendingDown },
+          { label: '3rd Party Vendor Cost' as DrillSegment, value: vendorCost, icon: TrendingUp },
+          { label: 'Total Cost' as DrillSegment, value: totalCost, icon: BarChart2 },
         ].map(({ label, value, icon: Icon }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
+          <button key={label} onClick={() => setDrill(label)}
+            className="bg-white rounded-xl border border-slate-200 p-5 text-left hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
               <Icon size={16} className="text-slate-400" />
@@ -282,7 +296,7 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-slate-800">{fmt(value)}</p>
             <p className="text-xs text-slate-400 mt-1">{pctOfCost(value)}</p>
             <p className="text-xs text-slate-400">{pctOfRevenue(value)}</p>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -449,19 +463,86 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <p className="text-xs text-slate-500">SG&amp;A is deducted directly from revenue at the configured rate (Settings → SG&amp;A). It is not affected by the date range.</p>
               <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 text-sm">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-slate-500">Total Revenue</span>
-                  <span className="font-medium text-slate-800">{fmt(revenue)}</span>
-                </div>
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-slate-500">SG&amp;A Rate</span>
-                  <span className="font-medium text-slate-800">{sgaRatePct}%</span>
-                </div>
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 font-semibold">
-                  <span className="text-slate-700">SG&amp;A = {fmt(revenue)} × {sgaRatePct}%</span>
-                  <span className="text-slate-900">{fmt(sga)}</span>
-                </div>
+                <CalcRow label="Total Revenue" value={fmt(revenue)} />
+                <CalcRow label="SG&A Rate" value={`${sgaRatePct}%`} />
+                <CalcRow label={`SG&A = ${fmt(revenue)} × ${sgaRatePct}%`} value={fmt(sga)} bold />
               </div>
+            </div>
+          )}
+
+          {drill === 'Total Revenue' && (
+            <div className="space-y-3">
+              {revenueFromBilling ? (
+                <>
+                  <p className="text-xs text-slate-500">Sum of the project&apos;s billing milestones (Billing page).</p>
+                  <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 sticky top-0">
+                        <tr className="text-xs text-slate-500 uppercase tracking-wide">
+                          <th className="text-left px-3 py-2 font-medium">Milestone</th>
+                          <th className="text-left px-3 py-2 font-medium">Invoice Status</th>
+                          <th className="text-right px-3 py-2 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {billing.map((b, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-slate-700">{b.billing_milestone || '—'}</td>
+                            <td className="px-3 py-2 text-slate-500 text-xs">{b.invoice_status || '—'}</td>
+                            <td className="px-3 py-2 text-right text-slate-800 font-medium">{fmt(b.amount_sgd ?? 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-slate-50">
+                        <tr className="font-semibold text-slate-800">
+                          <td className="px-3 py-2" colSpan={2}>Total Revenue</td>
+                          <td className="px-3 py-2 text-right">{fmt(revenue)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">No billing milestones found for this project yet — showing the fallback source.</p>
+                  <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 text-sm">
+                    <CalcRow label={project?.billing_type === 'T&M' ? 'Billable value (timesheets)' : 'Contract value'} value={fmt(revenue)} />
+                    <CalcRow label="Total Revenue" value={fmt(revenue)} bold />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {drill === 'Gross Profit' && (
+            <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 text-sm">
+              <CalcRow label="Total Revenue" value={fmt(revenue)} />
+              <CalcRow label={`SG&A (${sgaRatePct}% of revenue)`} value={`− ${fmt(sga)}`} />
+              <CalcRow label="Gross Profit = Revenue − SG&A" value={fmt(grossProfit)} bold />
+              <CalcRow label="Gross Margin (of revenue)" value={fmtPct(grossMarginPct)} />
+            </div>
+          )}
+
+          {drill === 'Net Profit' && (
+            <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 text-sm">
+              <CalcRow label="Total Revenue" value={fmt(revenue)} />
+              <CalcRow label={`SG&A (${sgaRatePct}% of revenue)`} value={`− ${fmt(sga)}`} />
+              <CalcRow label="Gross Profit" value={fmt(grossProfit)} bold />
+              <CalcRow label="Manpower Cost" value={`− ${fmt(manpowerCost)}`} />
+              <CalcRow label="Expenses" value={`− ${fmt(directExpenses)}`} />
+              <CalcRow label="3rd Party Vendor Cost" value={`− ${fmt(vendorCost)}`} />
+              <CalcRow label="Net Profit = Gross Profit − Total Cost" value={fmt(netProfit)} bold />
+              <CalcRow label="Net Margin (of revenue)" value={revenue > 0 ? fmtPct((netProfit / revenue) * 100) : '—'} />
+            </div>
+          )}
+
+          {drill === 'Total Cost' && (
+            <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 text-sm">
+              <CalcRow label="Manpower Cost" value={fmt(manpowerCost)} />
+              <CalcRow label="Expenses" value={fmt(directExpenses)} />
+              <CalcRow label="3rd Party Vendor Cost" value={fmt(vendorCost)} />
+              <CalcRow label="Total Cost = Manpower + Expenses + Vendor" value={fmt(totalCost)} bold />
+              <CalcRow label="SG&A is not included in Total Cost" value={fmt(sga)} />
             </div>
           )}
         </div>

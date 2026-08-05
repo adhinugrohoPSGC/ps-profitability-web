@@ -100,13 +100,14 @@ export async function POST(req: NextRequest) {
     const matchedProjectNames = new Set<string>()
     for (const p of (projects ?? []) as unknown as { id: string; contract_value: number; master_project: { billing_sheet_name: string | null } | null }[]) {
       const sheetName = p.master_project?.billing_sheet_name
+      // No billing sheet link (e.g. CSM support contracts imported with their
+      // own contract value) — leave contract_value alone instead of zeroing.
+      if (!sheetName) continue
       let total = 0
-      if (sheetName) {
-        for (const r of rows) {
-          if (r.project_name && billingNameMatches(r.project_name, sheetName)) {
-            total += r.amount_sgd ?? 0
-            matchedProjectNames.add(r.project_name)
-          }
+      for (const r of rows) {
+        if (r.project_name && billingNameMatches(r.project_name, sheetName)) {
+          total += r.amount_sgd ?? 0
+          matchedProjectNames.add(r.project_name)
         }
       }
       if (Math.abs((p.contract_value ?? 0) - total) > 0.01) {

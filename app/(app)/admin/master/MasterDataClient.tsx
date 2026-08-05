@@ -1,9 +1,8 @@
 'use client'
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Plus, Search, Loader2, Upload } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Plus, Search, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
-import { parseCsmMonitoringXLS } from '@/lib/parseTemplates'
 
 type Row = Record<string, unknown> & { id: string | number }
 
@@ -101,30 +100,6 @@ const TABS: TabDef[] = [
     ],
   },
   {
-    key: 'csm', label: 'CSM Contracts', table: 'csm_projects', orderBy: 'project_name', hasActive: false, canAdd: true,
-    addDefaults: { project_name: 'New contract' },
-    cols: [
-      { key: 'project_name', label: 'Project Name', editable: true, width: 'min-w-[240px]' },
-      { key: 'team', label: 'Team', editable: true },
-      { key: 'assignee', label: 'Assignee', editable: true, width: 'min-w-[160px]' },
-      { key: 'contract_type', label: 'Contract Type', editable: true },
-      { key: 'status', label: 'Status', editable: true },
-      { key: 'customer_health', label: 'Customer Health', editable: true },
-      { key: 'country', label: 'Country', editable: true },
-      { key: 'start_date', label: 'Start Date', kind: 'timestamp' },
-      { key: 'contract_end_date', label: 'Contract End', kind: 'timestamp' },
-      { key: 'transition_date', label: 'Transition', kind: 'timestamp' },
-      { key: 'extended_expiry_date', label: 'Extended Expiry', kind: 'timestamp' },
-      { key: 'total_contracted_hours', label: 'Contracted Hrs', editable: true, kind: 'number' },
-      { key: 'total_billed_hours', label: 'Billed Hrs', editable: true, kind: 'number' },
-      { key: 'remaining_hours', label: 'Remaining Hrs', editable: true, kind: 'number' },
-      { key: 'sgd_hourly_rate', label: 'SGD Hourly Rate', editable: true, kind: 'number' },
-      { key: 'sgd_contract_total', label: 'SGD Contract Total', editable: true, kind: 'number' },
-      { key: 'sgd_remaining', label: 'SGD Remaining', editable: true, kind: 'number' },
-      { key: 'sales_amo', label: 'Sales AMO', editable: true },
-    ],
-  },
-  {
     key: 'unmatched', label: 'Unmatched Queue', table: 'master_unmatched', orderBy: 'last_seen', hasActive: false, canAdd: false,
     cols: [
       { key: 'kind', label: 'Kind' },
@@ -159,8 +134,6 @@ export function MasterDataClient() {
   const [editing, setEditing] = useState<{ rowId: string | number; col: string } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [busyId, setBusyId] = useState<string | number | null>(null)
-  const [csmImportBusy, setCsmImportBusy] = useState(false)
-  const csmFileRef = useRef<HTMLInputElement>(null)
 
   const tab = TABS.find(t => t.key === tabKey)!
 
@@ -252,52 +225,6 @@ export function MasterDataClient() {
     toast('Row added — click cells to edit', 'success')
   }
 
-  function handleCsmImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = async ev => {
-      const buf = ev.target?.result
-      if (!buf) return
-      setCsmImportBusy(true)
-      try {
-        const { rows: parsed, warnings } = parseCsmMonitoringXLS(buf as ArrayBuffer)
-        if (parsed.length === 0) { toast(warnings[0] ?? 'No rows found in the file', 'warning'); return }
-        const payload = parsed.map(r => ({
-          project_name: r.project_name,
-          contract_type: r.contract_type || null,
-          assignee: r.assignee || null,
-          status: r.status || null,
-          start_date: r.start_date || null,
-          contract_end_date: r.contract_end_date || null,
-          team: r.team || null,
-          transition_date: r.transition_date || null,
-          total_contracted_hours: r.total_contracted_hours,
-          total_billed_hours: r.total_billed_hours,
-          remaining_hours: r.remaining_hours,
-          sales_amo: r.sales_amo || null,
-          country: r.country || null,
-          customer_health: r.customer_health || null,
-          sgd_hourly_rate: r.sgd_hourly_rate,
-          sgd_contract_total: r.sgd_contract_total,
-          sgd_remaining: r.sgd_remaining,
-          extended_expiry_date: r.extended_expiry_date || null,
-          updated_at: new Date().toISOString(),
-        }))
-        const { error } = await createClient().from('csm_projects').upsert(payload, { onConflict: 'project_name' })
-        if (error) throw error
-        toast(`Imported ${payload.length} CSM contract row${payload.length === 1 ? '' : 's'}`, 'success')
-        await loadTab(TABS.find(t => t.key === 'csm')!, true)
-      } catch (err) {
-        toast(err instanceof Error ? err.message : 'Import failed', 'error')
-      } finally {
-        setCsmImportBusy(false)
-      }
-    }
-    reader.readAsArrayBuffer(file)
-  }
-
   return (
     <div className="space-y-4">
       <div>
@@ -349,22 +276,10 @@ export function MasterDataClient() {
             Show inactive
           </label>
         )}
-        {tab.key === 'csm' && (
-          <>
-            <button
-              onClick={() => csmFileRef.current?.click()}
-              disabled={csmImportBusy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors ml-auto"
-            >
-              {csmImportBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Import Excel
-            </button>
-            <input ref={csmFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCsmImportFile} />
-          </>
-        )}
         {tab.canAdd && (
           <button
             onClick={addRow}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors ${tab.key === 'csm' ? '' : 'ml-auto'}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors ml-auto"
           >
             <Plus size={12} /> Add row
           </button>

@@ -321,69 +321,6 @@ export function parseBillingMilestonesXLS(buffer: ArrayBuffer): { rows: BillingM
   return { rows, warnings }
 }
 
-// ── CSM contract monitoring ─────────────────────────────────────────────────
-
-export interface CsmMonitoringRow {
-  project_name: string
-  contract_type: string
-  assignee: string
-  status: string
-  start_date: string
-  contract_end_date: string
-  team: string
-  transition_date: string
-  total_contracted_hours: number
-  total_billed_hours: number
-  remaining_hours: number
-  sales_amo: string
-  country: string
-  customer_health: string
-  sgd_hourly_rate: number
-  sgd_contract_total: number
-  sgd_remaining: number
-  extended_expiry_date: string
-}
-
-export function parseCsmMonitoringXLS(buffer: ArrayBuffer): { rows: CsmMonitoringRow[]; warnings: string[] } {
-  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
-  const sheetName = wb.SheetNames.find(n => /csm|monitoring/i.test(n)) ?? wb.SheetNames[0]
-  const ws = wb.Sheets[sheetName]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
-
-  const rows: CsmMonitoringRow[] = []
-  const warnings: string[] = []
-
-  for (let i = 0; i < raw.length; i++) {
-    const r = raw[i]
-    const projectName = toStr(findCol(r, ['Project Name']))
-    if (!projectName) continue
-
-    rows.push({
-      project_name: projectName,
-      contract_type: toStr(findCol(r, ['Contract Type'])),
-      assignee: toStr(findCol(r, ['Assignee'])),
-      status: toStr(findCol(r, ['Status'])),
-      start_date: toDate(findCol(r, ['Start Date'])),
-      contract_end_date: toDate(findCol(r, ['Contract End Date'])),
-      team: toStr(findCol(r, ['Team'])),
-      transition_date: toDate(findCol(r, ['Transition Date'])),
-      total_contracted_hours: toNum(findCol(r, ['Total Contracted Hours'])),
-      total_billed_hours: toNum(findCol(r, ['Total Billed Hours'])),
-      remaining_hours: toNum(findCol(r, ['Remaining Hours'])),
-      sales_amo: toStr(findCol(r, ['Sales AMO'])),
-      country: toStr(findCol(r, ['Country'])),
-      customer_health: toStr(findCol(r, ['Customer Health'])),
-      sgd_hourly_rate: toNum(findCol(r, ['SGD Hourly Rate'])),
-      sgd_contract_total: toNum(findCol(r, ['SGD Contract Total'])),
-      sgd_remaining: toNum(findCol(r, ['SGD Remaining'])),
-      extended_expiry_date: toDate(findCol(r, ['Extended Expiry Date'])),
-    })
-  }
-
-  if (rows.length === 0) warnings.push(`No rows with a Project Name found in sheet "${sheetName}"`)
-  return { rows, warnings }
-}
-
 // ── Blank template generators ──────────────────────────────────────────────
 
 export function generateTimesheetTemplate(): ArrayBuffer {

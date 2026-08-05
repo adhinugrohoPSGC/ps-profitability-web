@@ -26,7 +26,19 @@ interface Project {
   notes: string | null
   external_id: string | null
   created_at: string
-  master_project?: { project_code: string | null; region: string | null; product: string | null } | null
+  master_project?: { project_code: string | null; region: string | null; product: string | null; csm_contract_name: string | null } | null
+}
+
+interface CsmProject {
+  project_name: string
+  contract_type: string | null
+  assignee: string | null
+  team: string | null
+  customer_health: string | null
+  country: string | null
+  remaining_hours: number | null
+  sgd_remaining: number | null
+  extended_expiry_date: string | null
 }
 
 interface BudgetLine {
@@ -71,6 +83,7 @@ export default function ProjectsPage() {
   const router = useRouter()
   const { setSelectedProject } = useProject()
   const [projects, setProjects] = useState<Project[]>([])
+  const [csmByName, setCsmByName] = useState<Map<string, CsmProject>>(new Map())
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [facetSel, setFacetSel] = useState<Record<string, string[]>>(
@@ -88,10 +101,15 @@ export default function ProjectsPage() {
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await createClient()
-        .from('projects').select('*, master_project(project_code, region, product)').order('created_at', { ascending: false })
+      const sb = createClient()
+      const [{ data, error }, { data: csmRows, error: csmErr }] = await Promise.all([
+        sb.from('projects').select('*, master_project(project_code, region, product, csm_contract_name)').order('created_at', { ascending: false }),
+        sb.from('csm_projects').select('project_name, contract_type, assignee, team, customer_health, country, remaining_hours, sgd_remaining, extended_expiry_date'),
+      ])
       if (error) throw error
+      if (csmErr) throw csmErr
       setProjects((data as Project[]) ?? [])
+      setCsmByName(new Map(((csmRows as CsmProject[]) ?? []).map(c => [c.project_name, c])))
     } catch { toast('Failed to load projects', 'error') }
     finally { setLoading(false) }
   }, [toast])
@@ -223,6 +241,11 @@ export default function ProjectsPage() {
 
   const editingProject = editingId ? projects.find(p => p.id === editingId) ?? null : null
 
+  const csmFor = (p: Project) => {
+    const name = p.master_project?.csm_contract_name
+    return name ? csmByName.get(name) ?? null : null
+  }
+
   const projectColumns: DataColumn<Project>[] = [
     { key: 'name', label: 'Project', width: 340, sortValue: p => p.name.toLowerCase(),
       render: p => (
@@ -251,6 +274,20 @@ export default function ProjectsPage() {
       render: p => <span className="font-mono text-xs text-slate-500">{p.start_date ?? '—'}</span> },
     { key: 'end', label: 'End', width: 110, sortValue: p => p.end_date,
       render: p => <span className="font-mono text-xs text-slate-500">{p.end_date ?? '—'}</span> },
+    { key: 'csm_team', label: 'CSM Team', width: 90, sortValue: p => csmFor(p)?.team ?? null,
+      render: p => <span className="text-slate-500 text-xs">{csmFor(p)?.team ?? '—'}</span> },
+    { key: 'csm_assignee', label: 'CSM Assignee', width: 150, sortValue: p => csmFor(p)?.assignee?.toLowerCase() ?? null,
+      render: p => <span className="text-slate-600 truncate block text-xs" title={csmFor(p)?.assignee ?? ''}>{csmFor(p)?.assignee ?? '—'}</span> },
+    { key: 'csm_contract_type', label: 'Contract Type', width: 110, sortValue: p => csmFor(p)?.contract_type ?? null,
+      render: p => <span className="text-slate-500 text-xs">{csmFor(p)?.contract_type ?? '—'}</span> },
+    { key: 'csm_health', label: 'Customer Health', width: 120, sortValue: p => csmFor(p)?.customer_health ?? null,
+      render: p => <span className="text-slate-500 text-xs">{csmFor(p)?.customer_health ?? '—'}</span> },
+    { key: 'csm_remaining_hours', label: 'Remaining Hrs', width: 110, align: 'right', sortValue: p => csmFor(p)?.remaining_hours ?? null,
+      render: p => <span className="font-mono text-xs text-slate-600">{csmFor(p)?.remaining_hours != null ? csmFor(p)!.remaining_hours!.toLocaleString() : '—'}</span> },
+    { key: 'csm_sgd_remaining', label: 'SGD Remaining', width: 120, align: 'right', sortValue: p => csmFor(p)?.sgd_remaining ?? null,
+      render: p => <span className="font-mono text-xs text-slate-600">{csmFor(p)?.sgd_remaining != null ? fmt(csmFor(p)!.sgd_remaining!, 'SGD') : '—'}</span> },
+    { key: 'csm_expiry', label: 'Extended Expiry', width: 120, sortValue: p => csmFor(p)?.extended_expiry_date ?? null,
+      render: p => <span className="font-mono text-xs text-slate-500">{csmFor(p)?.extended_expiry_date ?? '—'}</span> },
     { key: 'actions', label: '', width: 200,
       render: p => (
         <div className="flex items-center gap-1">

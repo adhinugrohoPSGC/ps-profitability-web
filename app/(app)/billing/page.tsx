@@ -6,6 +6,7 @@ import MultiSelect, { type FacetOption } from '@/components/MultiSelect'
 import Modal from '@/components/Modal'
 import { useToast } from '@/components/Toast'
 import { parseBillingMilestonesXLS, type BillingMilestoneRow } from '@/lib/parseTemplates'
+import { billingNameMatches } from '@/lib/billingMatch'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -313,11 +314,9 @@ export default function BillingPage() {
         if (error) throw new Error(`Insert failed (rows ${i + 1}–${Math.min(i + IMPORT_CHUNK, payload.length)}): ${error.message}`)
       }
 
-      // 2. Refresh derived contract values on linked projects
-      const sums = new Map<string, number>()
-      for (const r of pending.rows) {
-        sums.set(r.project_name, (sums.get(r.project_name) ?? 0) + r.amount_sgd)
-      }
+      // 2. Refresh derived contract values on linked projects. Matching
+      // falls back to a prefix match to absorb the sheet's 80-char name
+      // truncation — see lib/billingMatch.ts.
       const { data: projData, error: projErr } = await sb
         .from('projects')
         .select('id, contract_value, master_project_id, master_project(billing_sheet_name)')
@@ -333,8 +332,10 @@ export default function BillingPage() {
       for (const p of projs) {
         const sheetName = p.master_project?.billing_sheet_name
         if (!sheetName) continue
-        const newValue = sums.get(sheetName)
-        if (newValue === undefined || newValue === (p.contract_value ?? null)) continue
+        const matched = pending.rows.filter(r => billingNameMatches(r.project_name, sheetName))
+        if (matched.length === 0) continue
+        const newValue = matched.reduce((s, r) => s + r.amount_sgd, 0)
+        if (newValue === (p.contract_value ?? null)) continue
         const { error } = await sb.from('projects').update({ contract_value: newValue }).eq('id', p.id)
         if (error) throw new Error(`Contract value update failed for project ${p.id}: ${error.message}`)
         updated++

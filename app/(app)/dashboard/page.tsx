@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/fetchAll'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
+import { billingNameMatches, billingNamePrefixToken } from '@/lib/billingMatch'
 
 interface Project {
   id: string; name: string; contract_value: number
@@ -23,7 +24,7 @@ interface TimesheetEntry {
 }
 interface ExpenseEntry { id: number; category: string; amount_sgd: number; expense_date: string | null }
 interface VendorCost { id: number; amount_sgd: number; cost_date: string | null; vendor_name: string | null; description: string | null }
-interface BillingRow { amount_sgd: number | null; billing_milestone: string | null; invoice_status: string | null }
+interface BillingRow { project_name: string; amount_sgd: number | null; billing_milestone: string | null; invoice_status: string | null }
 interface Settings { overhead_rate_pct?: string; [key: string]: string | undefined }
 
 const DEFAULT_SGA_RATE_PCT = 30
@@ -107,11 +108,12 @@ export default function DashboardPage() {
           .from('master_project').select('billing_sheet_name')
           .eq('id', projRow.master_project_id).single()
         if (master?.billing_sheet_name) {
+          const sheetName = master.billing_sheet_name
           const { data: b } = await supabase
-            .from('billing_milestones').select('amount_sgd, billing_milestone, invoice_status')
-            .eq('project_name', master.billing_sheet_name)
+            .from('billing_milestones').select('project_name, amount_sgd, billing_milestone, invoice_status')
+            .ilike('project_name', `${billingNamePrefixToken(sheetName)}%`)
             .order('source_row')
-          billingRows = (b as BillingRow[]) ?? []
+          billingRows = ((b as BillingRow[]) ?? []).filter(r => billingNameMatches(r.project_name, sheetName))
         }
       }
       setBilling(billingRows)

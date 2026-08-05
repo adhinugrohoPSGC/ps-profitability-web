@@ -3,6 +3,7 @@ export const maxDuration = 120
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
+import { billingNameMatches } from '@/lib/billingMatch'
 
 // Syncs billing_milestones from the PSGC Dashboard's live billing feed.
 // The PSGC tracker (psgc-dashboard.vercel.app) already reads the PMO ERP
@@ -88,17 +89,26 @@ export async function POST(req: NextRequest) {
       if (error) throw new Error(`Insert failed at chunk ${i / 500}: ${error.message}`)
     }
 
-    // Refresh billing-derived project values via the master link
-    const totals = new Map<string, number>()
-    for (const r of rows) totals.set(r.project_name!, (totals.get(r.project_name!) ?? 0) + (r.amount_sgd ?? 0))
+    // Refresh billing-derived project values via the master link. Matching
+    // falls back to a prefix match to absorb the sheet's 80-char name
+    // truncation — see lib/billingMatch.ts.
     const { data: projects } = await sb
       .from('projects')
       .select('id, contract_value, master_project(billing_sheet_name)')
       .not('master_project_id', 'is', null)
     let updated = 0
+    const matchedProjectNames = new Set<string>()
     for (const p of (projects ?? []) as unknown as { id: string; contract_value: number; master_project: { billing_sheet_name: string | null } | null }[]) {
       const sheetName = p.master_project?.billing_sheet_name
-      const total = sheetName ? (totals.get(sheetName) ?? 0) : 0
+      let total = 0
+      if (sheetName) {
+        for (const r of rows) {
+          if (r.project_name && billingNameMatches(r.project_name, sheetName)) {
+            total += r.amount_sgd ?? 0
+            matchedProjectNames.add(r.project_name)
+          }
+        }
+      }
       if (Math.abs((p.contract_value ?? 0) - total) > 0.01) {
         const { error } = await sb.from('projects').update({ contract_value: total }).eq('id', p.id)
         if (!error) updated++
@@ -111,7 +121,7 @@ export async function POST(req: NextRequest) {
     }).then(() => {}, () => {}) // sync_log schema may differ — non-fatal
 
     return NextResponse.json({
-      ok: true, milestones: rows.length, projects: totals.size, valuesUpdated: updated,
+      ok: true, milestones: rows.length, projects: matchedProjectNames.size, valuesUpdated: updated,
       feedFetchedAt: cache.fetched_at,
     })
   } catch (e) {

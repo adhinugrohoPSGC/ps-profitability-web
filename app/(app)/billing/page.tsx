@@ -46,7 +46,7 @@ type SortKey = 'project_name' | 'project_owner' | 'billing_milestone' | 'quotati
 
 const COLUMNS: { key: string; label: string; width: number; sort?: SortKey; align?: 'right' }[] = [
   { key: 'idx', label: '#', width: 44 },
-  { key: 'project', label: 'Project', width: 280, sort: 'project_name' },
+  { key: 'project', label: 'Project', width: 420, sort: 'project_name' },
   { key: 'owner', label: 'Owner', width: 90, sort: 'project_owner' },
   { key: 'milestone', label: 'Billing Milestone', width: 190, sort: 'billing_milestone' },
   { key: 'quotation', label: 'Quotation Source', width: 140, sort: 'quotation_source' },

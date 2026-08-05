@@ -11,6 +11,7 @@ type Col = {
   label: string
   editable?: boolean
   kind?: 'text' | 'number' | 'bool' | 'array' | 'timestamp'
+  options?: string[] // renders a dropdown instead of a text input
   width?: string
 }
 
@@ -45,8 +46,9 @@ const TABS: TabDef[] = [
     key: 'projects', label: 'Projects', table: 'master_project', orderBy: 'canonical_name', hasActive: true, canAdd: true,
     addDefaults: { canonical_name: 'New project', active: true },
     cols: [
-      { key: 'project_code', label: 'Code', editable: true },
+      { key: 'project_code', label: 'Customer', editable: true },
       { key: 'canonical_name', label: 'Canonical Name', editable: true, width: 'min-w-[240px]' },
+      { key: 'team', label: 'Team', editable: true, options: ['CSM', 'Delivery'] },
       { key: 'region', label: 'Region', editable: true },
       { key: 'product', label: 'Product', editable: true },
       { key: 'status', label: 'Status', editable: true },
@@ -170,13 +172,14 @@ export function MasterDataClient() {
     return list
   }, [data, tab, search, showInactive])
 
-  async function saveCell(row: Row, col: Col) {
+  async function saveCell(row: Row, col: Col, valueOverride?: string) {
     const t = tab
-    let value: unknown = editValue
+    const raw = valueOverride ?? editValue
+    let value: unknown = raw
     if (col.kind === 'number') {
-      const n = parseFloat(editValue)
-      value = editValue.trim() === '' ? null : (isFinite(n) ? n : null)
-    } else if (editValue.trim() === '') value = null
+      const n = parseFloat(raw)
+      value = raw.trim() === '' ? null : (isFinite(n) ? n : null)
+    } else if (raw.trim() === '') value = null
     setEditing(null)
     if (cellText(row[col.key], col.kind) === cellText(value, col.kind)) return
     const { error } = await createClient()
@@ -313,6 +316,19 @@ export function MasterDataClient() {
                       return (
                         <td key={c.key} className={`px-3 py-2 ${c.width ?? ''}`}>
                           {isEditing ? (
+                            c.options ? (
+                              <select
+                                autoFocus
+                                value={editValue}
+                                onChange={e => saveCell(row, c, e.target.value)}
+                                onBlur={() => setEditing(null)}
+                                onKeyDown={e => { if (e.key === 'Escape') setEditing(null) }}
+                                className="w-full border border-teal-300 rounded px-1.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              >
+                                <option value="">—</option>
+                                {c.options.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            ) : (
                             <input
                               autoFocus
                               type={c.kind === 'number' ? 'number' : 'text'}
@@ -325,6 +341,7 @@ export function MasterDataClient() {
                               }}
                               className="w-full border border-teal-300 rounded px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                             />
+                            )
                           ) : c.editable ? (
                             <button
                               onClick={() => { setEditing({ rowId: row.id, col: c.key }); setEditValue(row[c.key] === null || row[c.key] === undefined ? '' : String(row[c.key])) }}

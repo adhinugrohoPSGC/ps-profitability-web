@@ -1,5 +1,6 @@
 // Single registry of app menus and roles — used by RBAC (DB seed keys must match).
 export const MENUS = [
+  { key: 'summary',   label: 'Summary Dashboard' },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'upload',    label: 'Upload Templates' },
   { key: 'records',   label: 'Records' },

@@ -1,13 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign, X, RefreshCw, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, X, RefreshCw, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
-import ExpensesCard from '@/components/ExpensesCard'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
@@ -80,7 +79,6 @@ export default function ProjectsPage() {
   const [form, setForm] = useState<ProjectForm>(defaultForm())
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
-  const [expenseProject, setExpenseProject] = useState<Project | null>(null)
   const [budgetProject, setBudgetProject] = useState<Project | null>(null)
   const [budgetLines, setBudgetLines] = useState<BudgetLine[]>([])
   const [budgetSaving, setBudgetSaving] = useState(false)
@@ -282,10 +280,6 @@ export default function ProjectsPage() {
             className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50">
             <Archive size={14} />
           </button>
-          <button onClick={() => setExpenseProject(p)} title="Add Expenses"
-            className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50">
-            <DollarSign size={14} />
-          </button>
           <button onClick={() => loadBudget(p)} title="Edit Budget"
             className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
             <BarChart2 size={14} />
@@ -427,11 +421,6 @@ export default function ProjectsPage() {
             <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">Delete Project</button>
           </div>
         </div>
-      </Modal>
-
-      {/* Expenses Upload Modal */}
-      <Modal open={!!expenseProject} title={`Add Expenses — ${expenseProject?.name ?? ''}`} onClose={() => setExpenseProject(null)} maxWidth="max-w-3xl">
-        <ExpensesCard selectedProject={expenseProject?.id ?? null} hideProjectWarning />
       </Modal>
 
       {/* Budget Line Editor Modal */}

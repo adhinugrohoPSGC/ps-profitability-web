@@ -342,26 +342,6 @@ export function generateTimesheetTemplate(): ArrayBuffer {
   return buf
 }
 
-export function generateExpensesTemplate(): ArrayBuffer {
-  const wb = XLSX.utils.book_new()
-  const headers = [
-    'Identifier', 'Company Name', 'Country', 'Project Code / Name', 'PRS/PRJ', 'Sales Person', 'PM', 'Resource',
-    'Expense Category', 'Date', 'Month', 'Billable to Client', 'Currency', 'Amount in Actual Currency',
-  ]
-  const examples = [
-    ['SGD-2025-001', 'ZAP Clinic', 'Singapore', 'ZAP-001', 'Project', 'Jane Tan', 'Alice Tan', 'Bob Lim',
-      'Travel', '2025-05-01', 'May-2025', 'Yes', 'SGD', 620],
-    ['SGD-2025-002', 'ZAP Clinic', 'Singapore', 'ZAP-001', 'Project', 'Jane Tan', 'Alice Tan', 'Bob Lim',
-      'Accommodation', '2025-05-02', 'May-2025', 'Yes', 'SGD', 420],
-  ]
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...examples])
-  ws['!cols'] = [{ wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 20 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
-    { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 18 }]
-  XLSX.utils.book_append_sheet(wb, ws, 'Expenses')
-  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-  return buf
-}
-
 export function generateProjectInfoTemplate(): ArrayBuffer {
   const wb = XLSX.utils.book_new()
 

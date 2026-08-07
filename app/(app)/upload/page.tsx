@@ -16,7 +16,6 @@ import { findBestMatches, type MatchResult } from '@/lib/fuzzyMatch'
 import Modal from '@/components/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import ExpensesCard from '@/components/ExpensesCard'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -775,9 +774,9 @@ export default function UploadPage() {
         </button>
       </div>
 
-      {/* Upload cards */}
+      {/* Upload cards — expenses come from the company Google Sheet (nightly
+          sync + "Sync Expenses" on Records), not manual upload */}
       <TimesheetCard selectedProject={selectedProject} />
-      <ExpensesCard selectedProject={selectedProject} />
       <ProjectInfoCard onProjectImported={(id) => {
         setSelectedProject(id)
         loadProjects()

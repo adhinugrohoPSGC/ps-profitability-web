@@ -15,6 +15,10 @@
     {
       "path": "/api/sync-expenses",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/sync-vendor",
+      "schedule": "0 4 * * *"
     }
   ]
 }

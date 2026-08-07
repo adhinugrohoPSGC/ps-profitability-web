@@ -59,7 +59,11 @@ interface VendorCost {
   vendor_name: string
   description: string | null
   cost_date: string
-  amount_sgd: number
+  amount_sgd: number // 3rd party value (SGD) — what the dashboard counts as cost
+  value_sgd: number | null
+  psgc_portion: number | null
+  third_party_portion: number | null
+  import_batch_id: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -102,7 +106,14 @@ const EX_FACETS: FacetDef<ExpenseEntry>[] = [
   { key: 'batch', label: 'All batches', get: r => r.import_batch_id },
 ]
 
+const VC_FACETS: FacetDef<VendorCost>[] = [
+  { key: 'product', label: 'All products', get: r => r.vendor_name },
+  { key: 'source', label: 'All sources', get: r => r.import_batch_id?.startsWith('gsheet-') ? 'Sheet' : 'Manual' },
+]
+
 const emptySel = (defs: { key: string }[]) => Object.fromEntries(defs.map(d => [d.key, [] as string[]]))
+
+const fmtPortion = (v: number | null) => v == null ? '—' : `${Math.round(v * 100)}%`
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -122,6 +133,7 @@ export default function RecordsPage() {
   const debouncedSearch = useDebounce(search, 200)
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
   const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
+  const [vcSel, setVcSel] = useState<Record<string, string[]>>(() => emptySel(VC_FACETS))
 
   useEffect(() => {
     if (!selectedProject) { setTimesheet([]); setExpenses([]); setVendorCosts([]); return }
@@ -148,8 +160,14 @@ export default function RecordsPage() {
       r => [r.identifier, r.company_name, r.country, r.project_code_name, r.sales_person, r.pm, r.resource, r.category, r.currency, r.import_batch_id]),
     [expenses, exSel, debouncedSearch])
 
+  const vcFacets = useMemo(() =>
+    buildFacets(vendorCosts, VC_FACETS, vcSel, debouncedSearch,
+      r => [r.vendor_name, r.description]),
+    [vendorCosts, vcSel, debouncedSearch])
+
   const filteredTs = tsFacets.filtered
   const filteredEx = exFacets.filtered
+  const filteredVc = vcFacets.filtered
 
   // Timesheet tab shows hours summarised per team member, not per line
   const tsSummary = useMemo(() => {
@@ -173,10 +191,9 @@ export default function RecordsPage() {
   const totalHours = filteredTs.reduce((s, r) => s + (r.hours ?? 0), 0)
   const totalCost = filteredTs.reduce((s, r) => s + (r.labour_cost_sgd ?? 0), 0)
   const totalExpSgd = filteredEx.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
-  const totalVendorSgd = vendorCosts.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
-  const sortedVendorCosts = useMemo(() => [...vendorCosts].sort((a, b) => b.cost_date.localeCompare(a.cost_date)), [vendorCosts])
+  const totalVendorSgd = filteredVc.reduce((s, r) => s + (r.amount_sgd ?? 0), 0)
 
-  const activeSel = tab === 'timesheet' ? tsSel : tab === 'expenses' ? exSel : {}
+  const activeSel = tab === 'timesheet' ? tsSel : tab === 'expenses' ? exSel : vcSel
   const hasFilter = !!search || Object.values(activeSel).some(v => v.length)
   const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
 
@@ -194,6 +211,23 @@ export default function RecordsPage() {
       toast(err instanceof Error ? err.message : 'Sync failed', 'error')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const [vendorSyncing, setVendorSyncing] = useState(false)
+  async function syncVendors() {
+    setVendorSyncing(true)
+    try {
+      const res = await fetch('/api/sync-vendor-manual', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Sync failed')
+      const skipped = json.skippedNoProject ? ` · ${json.skippedNoProject} rows without a matching project skipped` : ''
+      toast(`Synced ${json.imported} vendor rows from the Google Sheet${skipped}`, 'success')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Vendor sync failed', 'error')
+    } finally {
+      setVendorSyncing(false)
     }
   }
 
@@ -273,6 +307,7 @@ export default function RecordsPage() {
     setSearch('')
     setTsSel(emptySel(TS_FACETS))
     setExSel(emptySel(EX_FACETS))
+    setVcSel(emptySel(VC_FACETS))
   }
 
   const tsColumns: DataColumn<TsSummary>[] = [
@@ -330,14 +365,24 @@ export default function RecordsPage() {
   ]
 
   const vendorColumns: DataColumn<VendorCost>[] = [
-    { key: 'vendor', label: 'Vendor Name', width: 200, sortValue: r => r.vendor_name.toLowerCase(),
+    { key: 'product', label: 'Product Name', width: 200, sortValue: r => r.vendor_name.toLowerCase(),
       render: r => <span className="font-medium text-slate-800 truncate block" title={r.vendor_name}>{r.vendor_name}</span> },
-    { key: 'description', label: 'Description', width: 260, sortValue: r => r.description?.toLowerCase() || null,
-      render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
-    { key: 'date', label: 'Date', width: 120, sortValue: r => r.cost_date,
-      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.cost_date)}</span> },
-    { key: 'amount', label: 'Amount (SGD)', width: 140, align: 'right', sortValue: r => r.amount_sgd,
+    { key: 'value', label: 'Value (SGD)', width: 120, align: 'right', sortValue: r => r.value_sgd,
+      render: r => <span className="font-mono text-slate-700">{r.value_sgd != null ? fmt(r.value_sgd) : '—'}</span> },
+    { key: 'psgc', label: 'PSGC Portion', width: 100, align: 'right', sortValue: r => r.psgc_portion,
+      render: r => <span className="font-mono text-xs text-slate-600">{fmtPortion(r.psgc_portion)}</span> },
+    { key: 'tp', label: '3rd Party Portion', width: 110, align: 'right', sortValue: r => r.third_party_portion,
+      render: r => <span className="font-mono text-xs text-slate-600">{fmtPortion(r.third_party_portion)}</span> },
+    { key: 'amount', label: '3rd Party Value (SGD)', width: 150, align: 'right', sortValue: r => r.amount_sgd,
       render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
+    { key: 'remark', label: 'Remark', width: 280, sortValue: r => r.description?.toLowerCase() || null,
+      render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
+    { key: 'date', label: 'Date', width: 110, sortValue: r => r.cost_date,
+      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.cost_date)}</span> },
+    { key: 'source', label: 'Source', width: 80, sortValue: r => r.import_batch_id ?? '',
+      render: r => r.import_batch_id?.startsWith('gsheet-')
+        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700 font-medium">Sheet</span>
+        : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500 font-medium">Manual</span> },
     { key: 'del', label: '', width: 44,
       render: r => (
         <button onClick={() => deleteVendorCost(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
@@ -382,6 +427,14 @@ export default function RecordsPage() {
             <Download size={12} className={expSyncing ? 'animate-bounce' : ''} /> {expSyncing ? 'Syncing…' : 'Sync Expenses'}
           </button>
           <button
+            onClick={syncVendors}
+            disabled={vendorSyncing || loading}
+            title="Pull 3rd party vendor records from the vendor Google Sheet (also runs automatically every night)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
+          >
+            <Download size={12} className={vendorSyncing ? 'animate-bounce' : ''} /> {vendorSyncing ? 'Syncing…' : 'Sync Vendors'}
+          </button>
+          <button
             onClick={() => setRefreshKey(k => k + 1)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
@@ -405,20 +458,21 @@ export default function RecordsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          <KpiCard label="Total Vendor Cost (SGD)" value={fmt(totalVendorSgd)} sub={`${vendorCosts.length} entries`} />
-          <KpiCard label="Vendors" value={String(new Set(vendorCosts.map(r => r.vendor_name)).size)} />
+          <KpiCard label="Total 3rd Party Value (SGD)" value={fmt(totalVendorSgd)} sub={`${filteredVc.length} entries`} />
+          <KpiCard label="Products" value={String(new Set(filteredVc.map(r => r.vendor_name)).size)} />
         </div>
       )}
 
       {/* Search + facets */}
-      {tab !== 'vendor' && (
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…' : 'Search identifier, company, PM, resource…'}
+            placeholder={tab === 'timesheet' ? 'Search consultant, phase, task…'
+              : tab === 'expenses' ? 'Search identifier, company, PM, resource…'
+              : 'Search product, remark…'}
             aria-label="Search records"
             className="w-full text-sm border border-slate-200 rounded-lg pl-8 pr-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
@@ -428,16 +482,21 @@ export default function RecordsPage() {
               <MultiSelect key={f.key} label={f.label} options={tsFacets.options[f.key]} selected={tsSel[f.key]}
                 onChange={values => setTsSel(s => ({ ...s, [f.key]: values }))} />
             ))
-          : EX_FACETS.map(f => (
+          : tab === 'expenses'
+          ? EX_FACETS.map(f => (
               <MultiSelect key={f.key} label={f.label} options={exFacets.options[f.key]} selected={exSel[f.key]}
                 onChange={values => setExSel(s => ({ ...s, [f.key]: values }))} />
+            ))
+          : VC_FACETS.map(f => (
+              <MultiSelect key={f.key} label={f.label} options={vcFacets.options[f.key]} selected={vcSel[f.key]}
+                onChange={values => setVcSel(s => ({ ...s, [f.key]: values }))} />
             ))}
         {hasFilter && (
           <button onClick={resetFilters} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2">
             <X size={12} /> Reset
           </button>
         )}
-        {singleBatch && (
+        {singleBatch && tab !== 'vendor' && (
           <button
             onClick={() => deleteBatch(singleBatch)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
@@ -446,10 +505,11 @@ export default function RecordsPage() {
           </button>
         )}
         <span className="text-xs text-slate-400 whitespace-nowrap">
-          {tab === 'timesheet' ? `${filteredTs.length} / ${timesheet.length}` : `${filteredEx.length} / ${expenses.length}`}
+          {tab === 'timesheet' ? `${filteredTs.length} / ${timesheet.length}`
+            : tab === 'expenses' ? `${filteredEx.length} / ${expenses.length}`
+            : `${filteredVc.length} / ${vendorCosts.length}`}
         </span>
       </div>
-      )}
 
       {/* Tabs + table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -574,20 +634,22 @@ export default function RecordsPage() {
               </div>
             </div>
 
-            {vendorCosts.length === 0 ? (
-              <div className="py-16 text-center text-sm text-slate-400">No 3rd party vendor costs recorded yet</div>
+            {filteredVc.length === 0 ? (
+              <div className="py-16 text-center text-sm text-slate-400">
+                {hasFilter ? 'No vendor rows match the current filters' : 'No 3rd party vendor costs recorded yet'}
+              </div>
             ) : (
               <DataTable
                 key="vendor"
                 columns={vendorColumns}
-                rows={sortedVendorCosts}
+                rows={filteredVc}
                 rowKey={r => r.id}
                 rowCap={50}
                 footer={
                   <tr>
-                    <td colSpan={3} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {vendorCosts.length} entries</td>
+                    <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filteredVc.length} entries</td>
                     <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
-                    <td />
+                    <td colSpan={4} />
                   </tr>
                 }
               />

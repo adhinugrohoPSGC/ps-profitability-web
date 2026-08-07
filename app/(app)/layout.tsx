@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ToastProvider>
       <ProjectProvider>
         <PresenceHeartbeat />
-        <div className="flex h-screen overflow-hidden bg-gray-50">
+        <div className="flex h-screen overflow-hidden bg-canvas">
           <Sidebar allowedMenus={allowedMenus} showUsers={showUsers} showMaster={isAdmin} />
           <div className="flex flex-col flex-1 overflow-hidden">
             <TopBar />

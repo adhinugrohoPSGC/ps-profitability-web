@@ -49,7 +49,7 @@ function InfoField({ label, value, valueClass }: { label: string; value: string;
 }
 function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct >= 15 ? 'text-amber-500' : 'text-red-500' }
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
-const COST_COLORS = { manpower: '#0d9488', expenses: '#3b82f6', vendor: '#8b5cf6', sga: '#f59e0b' }
+const COST_COLORS = { manpower: '#10b981', expenses: '#3b82f6', vendor: '#8b5cf6', sga: '#f59e0b' }
 
 type DrillSegment =
   | 'Manpower Cost' | 'Expenses' | '3rd Party Vendor Cost' | 'SG&A'
@@ -360,7 +360,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={80} />
               <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-              <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

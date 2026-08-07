@@ -78,7 +78,7 @@ export default function ManpowerSummaryPage() {
     }
     return [...map.values()]
       .map(g => ({ name: g.name, projects: g.projectIds.size, hours: g.hours, cost: g.cost }))
-      .sort((a, b) => b.cost - a.cost)
+      .sort((a, b) => b.hours - a.hours)
   }, [personRows, filteredIds, debouncedSearch])
 
   const totals = useMemo(() => ({
@@ -94,17 +94,15 @@ export default function ManpowerSummaryPage() {
       render: r => <span className="font-medium text-slate-800 truncate block" title={r.name}>{r.name}</span> },
     { key: 'projects', label: 'Projects', width: 100, align: 'right', sortValue: r => r.projects,
       render: r => <span className="font-mono text-slate-500">{r.projects}</span> },
-    { key: 'hours', label: 'Hours', width: 110, align: 'right', sortValue: r => r.hours,
-      render: r => <span className="font-mono text-slate-600">{r.hours.toFixed(1)}</span> },
-    { key: 'cost', label: 'Manpower Cost (SGD)', width: 160, align: 'right', sortValue: r => r.cost,
-      render: r => <span className="font-mono text-slate-800 font-semibold">{fmt(r.cost)}</span> },
+    { key: 'hours', label: 'Hours', width: 130, align: 'right', sortValue: r => r.hours,
+      render: r => <span className="font-mono text-slate-800 font-semibold">{r.hours.toFixed(1)}</span> },
   ]
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-800">Man Power Cost</h1>
-        <p className="text-sm text-slate-400 mt-0.5">Tracked hours and labour cost per person across all projects</p>
+        <p className="text-sm text-slate-400 mt-0.5">Tracked hours per person across all projects · cost is shown as a total only</p>
       </div>
 
       {/* KPIs */}
@@ -156,7 +154,7 @@ export default function ManpowerSummaryPage() {
       {/* Chart */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-700">Manpower Cost by Person</h3>
+          <h3 className="text-sm font-semibold text-slate-700">Hours by Person</h3>
           <span className="text-xs text-slate-400">{byPerson.length > BAR_CAP ? `Top ${BAR_CAP} of ${byPerson.length}` : `${byPerson.length} people`}</span>
         </div>
         {byPerson.length === 0 ? (
@@ -166,11 +164,11 @@ export default function ManpowerSummaryPage() {
             <BarChart data={byPerson.slice(0, BAR_CAP)} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={85} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toLocaleString()} h`} />
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <ReTooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any, _n: any, item: any) =>
-                [`${fmt(Number(v))} · ${Number(item?.payload?.hours ?? 0).toFixed(1)} h · ${item?.payload?.projects ?? 0} project(s)`, 'Cost']} />
-              <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                [`${Number(v).toFixed(1)} h · ${item?.payload?.projects ?? 0} project(s)`, 'Hours']} />
+              <Bar dataKey="hours" fill="#10b981" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -196,7 +194,6 @@ export default function ManpowerSummaryPage() {
                 <td className="px-3 py-2 text-slate-500">Totals · {byPerson.length} people</td>
                 <td />
                 <td className="px-3 py-2 text-right font-mono">{totals.hours.toFixed(1)}</td>
-                <td className="px-3 py-2 text-right font-mono">{fmt(totals.cost)}</td>
               </tr>
             }
           />

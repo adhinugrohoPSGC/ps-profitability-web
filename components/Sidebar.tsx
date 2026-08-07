@@ -54,35 +54,37 @@ export default function Sidebar({ allowedMenus, showUsers = false, showMaster = 
   }
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-sidebar flex flex-col overflow-y-auto">
-      <div className="px-5 py-5 border-b border-white/10">
+    <aside className="w-60 flex-shrink-0 bg-white border-r border-slate-200/80 flex flex-col overflow-y-auto">
+      <div className="px-5 py-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-teal-600 flex items-center justify-center shadow-sm">
             <TrendingUp className="text-white" size={18} />
           </div>
           <div>
-            <p className="text-white font-semibold text-sm leading-tight">PS Global</p>
-            <p className="text-white/50 text-xs">Profitability</p>
+            <p className="text-slate-800 font-semibold text-sm leading-tight">PS Global</p>
+            <p className="text-slate-400 text-xs">Profitability</p>
           </div>
         </div>
       </div>
-      <nav className="flex-1 px-3 py-3">
+      <nav className="flex-1 px-3 pb-3">
         {GROUPS.map(group => {
           const items = group.items.filter(visible)
           if (items.length === 0) return null
           return (
-            <div key={group.title} className="mb-3">
-              <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">{group.title}</p>
+            <div key={group.title} className="mb-4">
+              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group.title}</p>
               <div className="space-y-0.5">
                 {items.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href
                   return (
                     <Link key={href} href={href}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        active ? 'bg-accent text-white' : 'text-white/60 hover:bg-sidebar-hover hover:text-white'
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors ${
+                        active
+                          ? 'bg-teal-50 text-teal-800 font-semibold'
+                          : 'text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-800'
                       }`}
                     >
-                      <Icon size={16} />
+                      <Icon size={16} className={active ? 'text-teal-600' : 'text-slate-400'} />
                       <span className="flex-1">{label}</span>
                     </Link>
                   )
@@ -92,8 +94,8 @@ export default function Sidebar({ allowedMenus, showUsers = false, showMaster = 
           )
         })}
       </nav>
-      <div className="px-5 py-3 border-t border-white/10">
-        <p className="text-white/30 text-xs">v2.0.0 · Web</p>
+      <div className="px-5 py-3 border-t border-slate-100">
+        <p className="text-slate-300 text-xs">v2.0.0 · Web</p>
       </div>
     </aside>
   )

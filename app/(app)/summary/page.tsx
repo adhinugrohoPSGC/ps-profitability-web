@@ -129,7 +129,7 @@ function HierarchyChart({ title, projects, metric, onOpenProject }: {
             <Bar dataKey="value" radius={[4, 4, 0, 0]} cursor="pointer"
               /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
               onClick={(d: any) => handleClick(d?.name ?? d?.payload?.name)}>
-              {shown.map(g => <Cell key={g.name} fill={g.value < 0 ? '#ef4444' : '#0d9488'} />)}
+              {shown.map(g => <Cell key={g.name} fill={g.value < 0 ? '#ef4444' : '#10b981'} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -314,17 +314,19 @@ export default function SummaryPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Projects', value: String(filtered.length), icon: FolderKanban, sub: [...totals.teamCounts.entries()].map(([t, n]) => `${n} ${t}`).join(' · ') },
-          { label: 'Total Billing Value', value: fmt(totals.revenue), icon: DollarSign, sub: 'Sum of project billing values' },
-          { label: 'Total Cost', value: fmt(totals.totalCost), icon: TrendingDown, sub: `Manpower ${fmt(totals.manpower)} · Expenses ${fmt(totals.expenses)} · 3rd Party ${fmt(totals.vendor)}` },
-          { label: 'Net Profit', value: fmt(totals.netProfit), icon: BarChart2, sub: `GP ${fmt(totals.grossProfit)} (after ${sgaRatePct}% SG&A) − cost`, valueClass: totals.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500' },
-        ].map(({ label, value, icon: Icon, sub, valueClass }) => (
+          { label: 'Projects', value: String(filtered.length), icon: FolderKanban, tint: 'bg-slate-100 text-slate-600', sub: [...totals.teamCounts.entries()].map(([t, n]) => `${n} ${t}`).join(' · ') },
+          { label: 'Total Billing Value', value: fmt(totals.revenue), icon: DollarSign, tint: 'bg-teal-50 text-teal-600', sub: 'Sum of project billing values' },
+          { label: 'Total Cost', value: fmt(totals.totalCost), icon: TrendingDown, tint: 'bg-amber-50 text-amber-600', sub: `Manpower ${fmt(totals.manpower)} · Expenses ${fmt(totals.expenses)} · 3rd Party ${fmt(totals.vendor)}` },
+          { label: 'Net Profit', value: fmt(totals.netProfit), icon: BarChart2, tint: 'bg-teal-50 text-teal-600', sub: `GP ${fmt(totals.grossProfit)} (after ${sgaRatePct}% SG&A) − cost`, valueClass: totals.netProfit >= 0 ? 'text-teal-700' : 'text-red-500' },
+        ].map(({ label, value, icon: Icon, tint, sub, valueClass }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-              <Icon size={16} className="text-slate-400" />
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${tint}`}>
+                <Icon size={14} />
+              </span>
+              <p className="text-xs text-slate-500 font-medium">{label}</p>
             </div>
-            <p className={`text-2xl font-bold text-slate-800 ${valueClass ?? ''}`}>{value}</p>
+            <p className={`text-[26px] leading-8 font-bold tracking-tight text-slate-800 ${valueClass ?? ''}`}>{value}</p>
             {sub && <p className="text-xs text-slate-400 mt-1 truncate" title={sub}>{sub}</p>}
           </div>
         ))}
@@ -353,7 +355,7 @@ export default function SummaryPage() {
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <ReTooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any, _n: any, item: any) =>
                 [`${fmt(Number(v))} · ${Number(item?.payload?.hours ?? 0).toFixed(1)} h · ${item?.payload?.projects?.size ?? 0} project(s)`, 'Cost']} />
-              <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}

@@ -7,16 +7,19 @@ import { useProject } from '@/contexts/ProjectContext'
 import { ChevronDown, LogOut, Search, Check } from 'lucide-react'
 
 const TITLES: Record<string, string> = {
-  '/dashboard':   'Dashboard',
-  '/upload':      'Upload Templates',
-  '/projects':    'Projects',
-  '/rate-card':   'Rate Card Manager',
-  '/reports':     'Reports',
-  '/records':     'Records',
-  '/billing':     'Billing Milestones',
-  '/settings':    'Settings',
-  '/admin/users': 'User Management',
-  '/admin/master': 'Master Data',
+  '/summary':           'Summary Dashboard',
+  '/billing':           'Billing Milestones',
+  '/vendor-summary':    '3rd Party Vendor',
+  '/manpower-summary':  'Man Power Cost',
+  '/dashboard':         'Project Dashboard',
+  '/projects':          'Projects',
+  '/records':           'Records',
+  '/upload':            'Upload Templates',
+  '/reports':           'Reports',
+  '/settings':          'Preferences',
+  '/rate-card':         'Rate Card Manager',
+  '/admin/master':      'Master Data',
+  '/admin/users':       'User Management',
 }
 
 export default function TopBar() {
@@ -75,7 +78,7 @@ export default function TopBar() {
   }
 
   return (
-    <header className="h-14 flex items-center justify-between px-6 bg-white border-b border-slate-200 flex-shrink-0">
+    <header className="h-14 flex items-center justify-between px-6 bg-white border-b border-slate-200/80 flex-shrink-0">
       <h1 className="text-sm font-semibold text-slate-800">{TITLES[pathname] ?? ''}</h1>
       <div className="flex items-center gap-3">
         {showProjectSelector && (

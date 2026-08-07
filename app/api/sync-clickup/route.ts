@@ -6,8 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { fetchClickUpTimeEntries, fetchClickUpMemberIds } from '@/lib/clickup'
 
 const ANON_USER_ID = '00000000-0000-0000-0000-000000000001'
-const SYNC_WINDOW_DAYS = 90
-const MAX_WINDOW_DAYS = 1100 // ~3 years, covers full history of any current project
+const MAX_WINDOW_DAYS = 1100 // ~3 years, covers all time tracked on any current project
 
 interface RateCard { id: number; consultant_name: string | null; email: string | null; cost_rate_sgd: number; bill_rate_sgd: number }
 
@@ -75,12 +74,13 @@ export async function POST(req: NextRequest) {
 
   const memberIds = await fetchClickUpMemberIds(token, workspaceId)
 
-  // Nightly runs use the default 90-day incremental window; manual per-project
-  // syncs pass a larger windowDays to backfill full history.
+  // Every sync (nightly cron and manual) covers the project's full tracked
+  // history so totals always match ClickUp's all-time report. A smaller
+  // windowDays can still be passed explicitly for a quick partial refresh.
   const requestedWindow = parseInt(req.nextUrl.searchParams.get('windowDays') ?? '', 10)
   const windowDays = isFinite(requestedWindow) && requestedWindow > 0
     ? Math.min(requestedWindow, MAX_WINDOW_DAYS)
-    : SYNC_WINDOW_DAYS
+    : MAX_WINDOW_DAYS
 
   const now = Date.now()
   const windowStartMs = now - windowDays * 24 * 60 * 60 * 1000

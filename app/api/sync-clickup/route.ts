@@ -7,6 +7,7 @@ import { fetchClickUpTimeEntries, fetchClickUpMemberIds } from '@/lib/clickup'
 
 const ANON_USER_ID = '00000000-0000-0000-0000-000000000001'
 const SYNC_WINDOW_DAYS = 90
+const MAX_WINDOW_DAYS = 1100 // ~3 years, covers full history of any current project
 
 interface RateCard { id: number; consultant_name: string | null; email: string | null; cost_rate_sgd: number; bill_rate_sgd: number }
 
@@ -74,8 +75,15 @@ export async function POST(req: NextRequest) {
 
   const memberIds = await fetchClickUpMemberIds(token, workspaceId)
 
+  // Nightly runs use the default 90-day incremental window; manual per-project
+  // syncs pass a larger windowDays to backfill full history.
+  const requestedWindow = parseInt(req.nextUrl.searchParams.get('windowDays') ?? '', 10)
+  const windowDays = isFinite(requestedWindow) && requestedWindow > 0
+    ? Math.min(requestedWindow, MAX_WINDOW_DAYS)
+    : SYNC_WINDOW_DAYS
+
   const now = Date.now()
-  const windowStartMs = now - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  const windowStartMs = now - windowDays * 24 * 60 * 60 * 1000
   const windowStartDate = new Date(windowStartMs).toISOString().slice(0, 10)
   const today = new Date().toISOString().slice(0, 10)
   const syncedProjects: string[] = []
@@ -150,7 +158,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    synced: syncedProjects.length, rows: totalRows, windowDays: SYNC_WINDOW_DAYS,
+    synced: syncedProjects.length, rows: totalRows, windowDays,
     partial: timedOut, remaining: timedOut ? projects.length - syncedProjects.length : 0,
     projects: syncedProjects,
   })

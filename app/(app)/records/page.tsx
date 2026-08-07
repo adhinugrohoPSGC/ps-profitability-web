@@ -184,7 +184,8 @@ export default function RecordsPage() {
     if (!selectedProject) return
     setSyncing(true)
     try {
-      const res = await fetch(`/api/sync-clickup-manual?projectId=${selectedProject}`, { method: 'POST' })
+      // Full-history window so project totals match ClickUp's all-time report
+      const res = await fetch(`/api/sync-clickup-manual?projectId=${selectedProject}&windowDays=1100`, { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Sync failed')
       toast(`Synced ${json.rows ?? 0} entries from ClickUp (last ${json.windowDays} days)`, 'success')

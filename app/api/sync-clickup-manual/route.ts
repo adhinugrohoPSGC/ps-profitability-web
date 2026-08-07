@@ -21,9 +21,12 @@ export async function POST(req: NextRequest) {
   const headers: HeadersInit = process.env.CRON_SECRET
     ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
     : {}
-  const url = projectId
-    ? `http://localhost/api/sync-clickup?projectId=${encodeURIComponent(projectId)}`
-    : 'http://localhost/api/sync-clickup'
+  const params = new URLSearchParams()
+  if (projectId) params.set('projectId', projectId)
+  const windowDays = req.nextUrl.searchParams.get('windowDays')
+  if (windowDays) params.set('windowDays', windowDays)
+  const qs = params.toString()
+  const url = `http://localhost/api/sync-clickup${qs ? `?${qs}` : ''}`
   const fakeReq = new NextRequest(url, { method: 'POST', headers })
   return syncHandler(fakeReq)
 }

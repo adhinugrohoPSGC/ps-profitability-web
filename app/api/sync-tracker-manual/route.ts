@@ -1,0 +1,23 @@
+export const maxDuration = 120
+
+import { NextRequest, NextResponse } from 'next/server'
+
+// Module-level rate limit: 1 call per 60 seconds
+let lastCallMs = 0
+
+export async function POST() {
+  const now = Date.now()
+  if (now - lastCallMs < 60_000) {
+    const waitSec = Math.ceil((60_000 - (now - lastCallMs)) / 1000)
+    return NextResponse.json({ error: `Rate limited — try again in ${waitSec}s` }, { status: 429 })
+  }
+  lastCallMs = now
+
+  // Delegate to the main sync route handler directly (same process)
+  const { POST: syncHandler } = await import('../sync-tracker/route')
+  const headers: HeadersInit = process.env.CRON_SECRET
+    ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+    : {}
+  const fakeReq = new NextRequest('http://localhost/api/sync-tracker', { method: 'POST', headers })
+  return syncHandler(fakeReq)
+}

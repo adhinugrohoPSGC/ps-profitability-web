@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, Archive, BarChart2, FolderKanban, Search, DollarSign, X, RefreshCw, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
@@ -219,6 +219,22 @@ export default function ProjectsPage() {
     router.push('/dashboard')
   }
 
+  const [trackerSyncBusy, setTrackerSyncBusy] = useState(false)
+  async function handleTrackerSync() {
+    setTrackerSyncBusy(true)
+    try {
+      const res = await fetch('/api/sync-tracker-manual', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      toast(`Tracker sync: ${json.matched} project${json.matched === 1 ? '' : 's'} matched · ${json.updated} updated`, 'success')
+      await reload()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Tracker sync failed', 'error')
+    } finally {
+      setTrackerSyncBusy(false)
+    }
+  }
+
   const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500'
 
   const editingProject = editingId ? projects.find(p => p.id === editingId) ?? null : null
@@ -304,6 +320,14 @@ export default function ProjectsPage() {
           </button>
         )}
         <span className="text-xs text-slate-400">{filtered.length} / {projects.length}</span>
+        <button
+          onClick={handleTrackerSync}
+          disabled={trackerSyncBusy}
+          title="Pull PM, status, kick-off and go-live dates from the PSGC Project Tracker (also runs automatically every night)"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
+        >
+          {trackerSyncBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync from Tracker
+        </button>
         <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">
           <Plus size={14} /> New Project
         </button>

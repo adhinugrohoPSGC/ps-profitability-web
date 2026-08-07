@@ -1,8 +1,10 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Plus, Search, Loader2 } from 'lucide-react'
+import { Plus, Search, Loader2, ArrowUp, ArrowDown, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
+import MultiSelect from '@/components/MultiSelect'
+import { buildFacets, type FacetDef } from '@/lib/facets'
 
 type Row = Record<string, unknown> & { id: string | number }
 
@@ -136,8 +138,13 @@ export function MasterDataClient() {
   const [editing, setEditing] = useState<{ rowId: string | number; col: string } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [busyId, setBusyId] = useState<string | number | null>(null)
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
+  const [facetSel, setFacetSel] = useState<Record<string, string[]>>({})
 
   const tab = TABS.find(t => t.key === tabKey)!
+
+  // Filters and sort are per-tab concerns — clear them when switching tabs
+  useEffect(() => { setSort(null); setFacetSel({}); setSearch('') }, [tabKey])
 
   const loadTab = useCallback(async (t: TabDef, force = false) => {
     if (!force && data[t.key]) return
@@ -159,18 +166,60 @@ export function MasterDataClient() {
   useEffect(() => { TABS.forEach(t => loadTab(t)) // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const rows = useMemo(() => {
+  // Dropdown filters are auto-generated for plain-text columns with a small
+  // set of distinct values (e.g. Team, Region, Status) — free-text columns
+  // stay covered by the search box.
+  const facetDefs = useMemo<FacetDef<Row>[]>(() => {
+    const list = data[tab.key] ?? []
+    if (list.length === 0) return []
+    return tab.cols
+      .filter(c => !c.kind)
+      .map(c => ({ col: c, distinct: new Set(list.map(r => String(r[c.key] ?? '')).filter(Boolean)).size }))
+      .filter(x => x.distinct >= 2 && x.distinct <= 30)
+      .map(x => ({
+        key: x.col.key,
+        label: `All ${x.col.label.toLowerCase()}`,
+        get: (r: Row) => { const v = r[x.col.key]; return v === null || v === undefined ? null : String(v) },
+      }))
+  }, [data, tab])
+
+  const facets = useMemo(() => {
     let list = data[tab.key] ?? []
     if (tab.hasActive && !showInactive) list = list.filter(r => r.active !== false)
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter(r => tab.cols.some(c => {
-        const v = r[c.key]
-        return v !== null && v !== undefined && String(Array.isArray(v) ? v.join(' ') : v).toLowerCase().includes(q)
-      }))
+    return buildFacets(list, facetDefs, facetSel, search, r => tab.cols.map(c => {
+      const v = r[c.key]
+      return v === null || v === undefined ? null : Array.isArray(v) ? v.join(' ') : String(v)
+    }))
+  }, [data, tab, showInactive, facetDefs, facetSel, search])
+
+  const rows = useMemo(() => {
+    const list = facets.filtered
+    if (!sort) return list
+    const col = tab.cols.find(c => c.key === sort.key)
+    if (!col) return list
+    const val = (r: Row): string | number | null => {
+      const v = r[col.key]
+      if (v === null || v === undefined || v === '') return null
+      if (col.kind === 'number') { const n = Number(v); return isNaN(n) ? null : n }
+      if (col.kind === 'bool') return v ? 1 : 0
+      if (col.kind === 'array') return Array.isArray(v) ? v.join(', ').toLowerCase() : String(v).toLowerCase()
+      return String(v).toLowerCase() // timestamps are ISO strings — lexicographic works
     }
-    return list
-  }, [data, tab, search, showInactive])
+    const { dir } = sort
+    return [...list].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      if (va === null && vb === null) return 0
+      if (va === null) return 1 // nulls last regardless of direction
+      if (vb === null) return -1
+      if (va < vb) return -dir
+      if (va > vb) return dir
+      return 0
+    })
+  }, [facets, sort, tab])
+
+  function toggleSort(key: string) {
+    setSort(s => (s?.key === key ? (s.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 }))
+  }
 
   async function saveCell(row: Row, col: Col, valueOverride?: string) {
     const t = tab
@@ -273,6 +322,24 @@ export function MasterDataClient() {
             className="w-full border border-slate-200 rounded-lg text-sm pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
         </div>
+        {facetDefs.map(f => (
+          <MultiSelect
+            key={f.key}
+            label={f.label}
+            options={facets.options[f.key] ?? []}
+            selected={facetSel[f.key] ?? []}
+            onChange={values => setFacetSel(s => ({ ...s, [f.key]: values }))}
+          />
+        ))}
+        {(search || Object.values(facetSel).some(v => v.length)) && (
+          <button
+            onClick={() => { setSearch(''); setFacetSel({}) }}
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2"
+          >
+            <X size={12} /> Reset
+          </button>
+        )}
+        <span className="text-xs text-slate-400 whitespace-nowrap">{rows.length} / {(data[tab.key] ?? []).length}</span>
         {tab.hasActive && (
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="accent-teal-600" />
@@ -295,9 +362,24 @@ export function MasterDataClient() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-xs text-slate-500 uppercase tracking-wide">
-                {tab.cols.map(c => (
-                  <th key={c.key} className={`text-left px-3 py-2.5 font-medium whitespace-nowrap ${c.width ?? ''}`}>{c.label}</th>
-                ))}
+                {tab.cols.map(c => {
+                  const sorted = sort?.key === c.key
+                  return (
+                    <th
+                      key={c.key}
+                      aria-sort={sorted ? (sort!.dir === 1 ? 'ascending' : 'descending') : undefined}
+                      className={`text-left px-3 py-2.5 font-medium whitespace-nowrap ${c.width ?? ''}`}
+                    >
+                      <button
+                        onClick={() => toggleSort(c.key)}
+                        className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-700 ${sorted ? 'text-teal-600' : ''}`}
+                      >
+                        {c.label}
+                        {sorted && (sort!.dir === 1 ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+                      </button>
+                    </th>
+                  )
+                })}
                 <th className="px-3 py-2.5" />
               </tr>
             </thead>

@@ -197,6 +197,23 @@ export default function RecordsPage() {
     }
   }
 
+  const [expSyncing, setExpSyncing] = useState(false)
+  async function syncExpenses() {
+    setExpSyncing(true)
+    try {
+      const res = await fetch('/api/sync-expenses-manual', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Sync failed')
+      const skipped = json.skippedNoProject ? ` · ${json.skippedNoProject} rows without a matching project skipped` : ''
+      toast(`Synced ${json.imported} expense rows from the Google Sheet${skipped}`, 'success')
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Expenses sync failed', 'error')
+    } finally {
+      setExpSyncing(false)
+    }
+  }
+
   async function addVendorCost() {
     if (!selectedProject) return
     const amount = parseFloat(vendorForm.amount_sgd)
@@ -355,6 +372,14 @@ export default function RecordsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
             <Download size={12} className={syncing ? 'animate-bounce' : ''} /> {syncing ? 'Syncing…' : 'Sync ClickUp'}
+          </button>
+          <button
+            onClick={syncExpenses}
+            disabled={expSyncing || loading}
+            title="Pull all expenses from the company expenses Google Sheet (also runs automatically every night)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
+          >
+            <Download size={12} className={expSyncing ? 'animate-bounce' : ''} /> {expSyncing ? 'Syncing…' : 'Sync Expenses'}
           </button>
           <button
             onClick={() => setRefreshKey(k => k + 1)}

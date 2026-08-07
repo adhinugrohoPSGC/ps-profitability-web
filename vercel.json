@@ -11,6 +11,10 @@
     {
       "path": "/api/sync-tracker",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sync-expenses",
+      "schedule": "30 3 * * *"
     }
   ]
 }

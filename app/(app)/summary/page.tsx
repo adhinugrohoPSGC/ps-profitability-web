@@ -2,10 +2,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, ReferenceLine,
+  Tooltip as ReTooltip, ResponsiveContainer,
 } from 'recharts'
-import { FolderKanban, DollarSign, TrendingDown, BarChart2, CalendarRange, X } from 'lucide-react'
+import { FolderKanban, DollarSign, TrendingDown, BarChart2, CalendarRange, X, ChevronRight, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
@@ -21,7 +21,7 @@ interface SummaryProject {
   contract_value: number
   start_date: string | null
   end_date: string | null
-  master_project?: { region: string | null; team: string | null } | null
+  master_project?: { region: string | null; team: string | null; project_code: string | null } | null
   // filled from the cost RPC
   manpower_cost: number
   expense_cost: number
@@ -30,10 +30,12 @@ interface SummaryProject {
 }
 
 interface CostRow { project_id: string; manpower_cost: number; hours: number; expense_cost: number; vendor_cost: number }
+interface PersonRow { project_id: string; consultant_name: string; hours: number; cost: number }
+interface VendorRow { id: number; project_id: string; vendor_name: string; amount_sgd: number; cost_date: string | null; description: string | null }
 
 const DEFAULT_SGA_RATE_PCT = 30
 const fmt = (v: number) => new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 0 }).format(v)
-const CHART_COLORS = ['#0d9488', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '#06b6d4']
+const BAR_CAP = 15
 
 const FACETS: FacetDef<SummaryProject>[] = [
   { key: 'team', label: 'All teams', get: p => p.master_project?.team },
@@ -41,43 +43,128 @@ const FACETS: FacetDef<SummaryProject>[] = [
   { key: 'pm', label: 'All PMs', get: p => p.project_manager },
 ]
 
-type Group = { name: string; value: number; cost: number; count: number; projects: SummaryProject[] }
+const teamOf = (p: SummaryProject) => p.master_project?.team?.trim() || 'Unassigned'
+const customerOf = (p: SummaryProject) => p.master_project?.project_code?.trim() || 'Unassigned'
 
-function groupBy(projects: SummaryProject[], get: (p: SummaryProject) => string | null | undefined): Group[] {
-  const map = new Map<string, Group>()
-  for (const p of projects) {
-    const key = get(p) || 'Unassigned'
-    let g = map.get(key)
-    if (!g) { g = { name: key, value: 0, cost: 0, count: 0, projects: [] }; map.set(key, g) }
-    g.value += p.contract_value || 0
-    g.cost += p.manpower_cost + p.expense_cost + p.vendor_cost
-    g.count += 1
-    g.projects.push(p)
+// ── Team > Customer > Project drill-down bar chart ───────────────────────────
+
+const LEVELS = ['Team', 'Customer', 'Project'] as const
+
+function HierarchyChart({ title, projects, metric, onOpenProject }: {
+  title: string
+  projects: SummaryProject[]
+  metric: (p: SummaryProject) => number
+  onOpenProject: (p: SummaryProject) => void
+}) {
+  const [path, setPath] = useState<string[]>([]) // [team] or [team, customer]
+  const level = path.length
+
+  const scoped = useMemo(() => projects.filter(p =>
+    (level < 1 || teamOf(p) === path[0]) && (level < 2 || customerOf(p) === path[1])),
+    [projects, path, level])
+
+  const groups = useMemo(() => {
+    const keyFn = level === 0 ? teamOf : level === 1 ? customerOf : (p: SummaryProject) => p.name
+    const map = new Map<string, { name: string; value: number; count: number }>()
+    for (const p of scoped) {
+      const key = keyFn(p)
+      const g = map.get(key) ?? { name: key, value: 0, count: 0 }
+      g.value += metric(p)
+      g.count += 1
+      map.set(key, g)
+    }
+    return [...map.values()].sort((a, b) => b.value - a.value)
+  }, [scoped, level, metric])
+
+  const shown = groups.slice(0, BAR_CAP)
+  const hasNegative = shown.some(g => g.value < 0)
+
+  function handleClick(name: string | undefined) {
+    if (!name) return
+    if (level < 2) { setPath([...path, name]); return }
+    const project = scoped.find(p => p.name === name)
+    if (project) onOpenProject(project)
   }
-  return [...map.values()].sort((a, b) => b.value - a.value)
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="flex items-center justify-between mb-1 gap-4">
+        <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+        <span className="text-xs text-slate-400 whitespace-nowrap">
+          {level < 2 ? `Click a bar to drill into ${LEVELS[level + 1].toLowerCase()}s` : 'Click a bar to open the project dashboard'}
+        </span>
+      </div>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1 mb-4 text-xs flex-wrap">
+        <button onClick={() => setPath([])}
+          className={path.length === 0 ? 'font-semibold text-slate-700' : 'text-teal-600 hover:underline'}>
+          All Teams
+        </button>
+        {path.map((seg, i) => (
+          <span key={i} className="flex items-center gap-1 min-w-0">
+            <ChevronRight size={11} className="text-slate-300 flex-shrink-0" />
+            <button onClick={() => setPath(path.slice(0, i + 1))}
+              className={`truncate max-w-[260px] ${i === path.length - 1 ? 'font-semibold text-slate-700' : 'text-teal-600 hover:underline'}`}
+              title={seg}>
+              {seg}
+            </button>
+          </span>
+        ))}
+        <span className="text-slate-400 ml-1">· {LEVELS[level]} level · {groups.length > BAR_CAP ? `top ${BAR_CAP} of ${groups.length}` : `${groups.length} ${LEVELS[level].toLowerCase()}${groups.length === 1 ? '' : 's'}`}</span>
+      </div>
+      {shown.length === 0 ? (
+        <div className="py-16 text-center text-sm text-slate-400">No data for the current filters</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={shown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false}
+              angle={-40} textAnchor="end" interval={0} height={85}
+              tickFormatter={(v: string) => v.length > 24 ? v.slice(0, 23) + '…' : v} />
+            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false}
+              tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            <ReTooltip formatter={(v: any) => fmt(Number(v))} cursor={{ fill: '#f8fafc' }} />
+            {hasNegative && <ReferenceLine y={0} stroke="#cbd5e1" />}
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} cursor="pointer"
+              /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+              onClick={(d: any) => handleClick(d?.name ?? d?.payload?.name)}>
+              {shown.map(g => <Cell key={g.name} fill={g.value < 0 ? '#ef4444' : '#0d9488'} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
 }
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SummaryPage() {
   const router = useRouter()
   const { setSelectedProject } = useProject()
   const [projects, setProjects] = useState<SummaryProject[]>([])
+  const [personRows, setPersonRows] = useState<PersonRow[]>([])
+  const [vendorRows, setVendorRows] = useState<VendorRow[]>([])
   const [sgaRatePct, setSgaRatePct] = useState(DEFAULT_SGA_RATE_PCT)
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [facetSel, setFacetSel] = useState<Record<string, string[]>>(
     () => Object.fromEntries(FACETS.map(f => [f.key, [] as string[]])))
-  const [drill, setDrill] = useState<{ title: string; group: Group } | null>(null)
+  const [vendorDrill, setVendorDrill] = useState<{ product: string } | null>(null)
 
   useEffect(() => {
     setLoading(true)
     const sb = createClient()
     async function load() {
-      const [proj, costs, sett] = await Promise.all([
+      const [proj, costs, people, vendors, sett] = await Promise.all([
         sb.from('projects')
-          .select('id, name, project_manager, status, billing_type, contract_value, start_date, end_date, master_project(region, team)')
+          .select('id, name, project_manager, status, billing_type, contract_value, start_date, end_date, master_project(region, team, project_code)')
           .neq('status', 'archived'),
         sb.rpc('project_cost_summary', { date_from: dateFrom || null, date_to: dateTo || null }),
+        sb.rpc('person_cost_summary', { date_from: dateFrom || null, date_to: dateTo || null }),
+        sb.from('vendor_costs').select('id, project_id, vendor_name, amount_sgd, cost_date, description'),
         sb.from('user_settings').select('key, value').eq('key', 'overhead_rate_pct'),
       ])
       const costMap = new Map(((costs.data ?? []) as CostRow[]).map(c => [c.project_id, c]))
@@ -93,6 +180,8 @@ export default function SummaryPage() {
           }
         })
       setProjects(rows)
+      setPersonRows(((people.data ?? []) as PersonRow[]).map(r => ({ ...r, hours: Number(r.hours), cost: Number(r.cost) })))
+      setVendorRows((vendors.data ?? []) as VendorRow[])
       const rate = parseFloat((sett.data?.[0] as { value?: string } | undefined)?.value ?? '')
       if (!isNaN(rate)) setSgaRatePct(rate)
     }
@@ -103,7 +192,15 @@ export default function SummaryPage() {
     buildFacets(projects, FACETS, facetSel, '', p => [p.name]),
     [projects, facetSel])
   const filtered = facets.filtered
+  const filteredIds = useMemo(() => new Set(filtered.map(p => p.id)), [filtered])
   const hasFilter = Object.values(facetSel).some(v => v.length) || !!dateFrom || !!dateTo
+
+  // Net profit per project follows the dashboard formula:
+  // GP = Revenue − SG&A; NP = GP − (Manpower + Expenses + Vendor)
+  const netProfitOf = useMemo(() => (p: SummaryProject) => {
+    const revenue = p.contract_value || 0
+    return revenue - revenue * (sgaRatePct / 100) - (p.manpower_cost + p.expense_cost + p.vendor_cost)
+  }, [sgaRatePct])
 
   const totals = useMemo(() => {
     const revenue = filtered.reduce((s, p) => s + (p.contract_value || 0), 0)
@@ -114,17 +211,55 @@ export default function SummaryPage() {
     const sga = revenue * (sgaRatePct / 100)
     const grossProfit = revenue - sga
     const netProfit = grossProfit - totalCost
-    return { revenue, manpower, expenses, vendor, totalCost, sga, grossProfit, netProfit }
+    const teamCounts = new Map<string, number>()
+    for (const p of filtered) teamCounts.set(teamOf(p), (teamCounts.get(teamOf(p)) ?? 0) + 1)
+    return { revenue, manpower, expenses, vendor, totalCost, sga, grossProfit, netProfit, teamCounts }
   }, [filtered, sgaRatePct])
 
-  const byTeam = useMemo(() => groupBy(filtered, p => p.master_project?.team), [filtered])
-  const byRegion = useMemo(() => groupBy(filtered, p => p.master_project?.region), [filtered])
-  const byPm = useMemo(() => groupBy(filtered, p => p.project_manager).slice(0, 12), [filtered])
+  // Manpower cost per person across the filtered projects
+  const byPerson = useMemo(() => {
+    const map = new Map<string, { name: string; cost: number; hours: number; projects: Set<string> }>()
+    for (const r of personRows) {
+      if (!filteredIds.has(r.project_id)) continue
+      const g = map.get(r.consultant_name) ?? { name: r.consultant_name, cost: 0, hours: 0, projects: new Set<string>() }
+      g.cost += r.cost
+      g.hours += r.hours
+      g.projects.add(r.project_id)
+      map.set(r.consultant_name, g)
+    }
+    return [...map.values()].sort((a, b) => b.cost - a.cost)
+  }, [personRows, filteredIds])
+  const personShown = byPerson.slice(0, BAR_CAP)
 
-  const openGroup = (title: string) => (g: Group | undefined) => { if (g) setDrill({ title: `${title}: ${g.name}`, group: g }) }
-  const openTeam = openGroup('Team')
-  const openRegion = openGroup('Region')
-  const openPm = openGroup('PM')
+  // 3rd party vendor cost per product across the filtered projects, honouring
+  // the cost date range (vendor rows are dated by their Year of Signoff)
+  const inRange = (d: string | null) => {
+    if (!dateFrom && !dateTo) return true
+    if (!d) return false
+    return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo)
+  }
+  const filteredVendorRows = useMemo(
+    () => vendorRows.filter(r => filteredIds.has(r.project_id) && inRange(r.cost_date)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vendorRows, filteredIds, dateFrom, dateTo])
+  const byProduct = useMemo(() => {
+    const map = new Map<string, { name: string; value: number; count: number }>()
+    for (const r of filteredVendorRows) {
+      const g = map.get(r.vendor_name) ?? { name: r.vendor_name, value: 0, count: 0 }
+      g.value += Number(r.amount_sgd ?? 0)
+      g.count += 1
+      map.set(r.vendor_name, g)
+    }
+    return [...map.values()].sort((a, b) => b.value - a.value)
+  }, [filteredVendorRows])
+  const vendorTotal = byProduct.reduce((s, g) => s + g.value, 0)
+  const projectNameById = useMemo(() => new Map(projects.map(p => [p.id, p.name])), [projects])
+  const vendorDrillRows = useMemo(() =>
+    vendorDrill
+      ? filteredVendorRows.filter(r => r.vendor_name === vendorDrill.product)
+          .sort((a, b) => Number(b.amount_sgd) - Number(a.amount_sgd))
+      : [],
+    [vendorDrill, filteredVendorRows])
 
   function handleOpenProject(p: SummaryProject) {
     setSelectedProject(p.id)
@@ -132,6 +267,13 @@ export default function SummaryPage() {
   }
 
   const dateInputCls = 'border border-slate-200 rounded-lg text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-500 text-slate-700'
+  const rangeLabel = (dateFrom || dateTo) ? `${dateFrom || 'start'} → ${dateTo || 'today'}` : 'all time'
+  const filterInfo = [
+    facetSel.team?.length ? `Team: ${facetSel.team.join(', ')}` : null,
+    facetSel.region?.length ? `Region: ${facetSel.region.join(', ')}` : null,
+    facetSel.pm?.length ? `PM: ${facetSel.pm.join(', ')}` : null,
+    `Costs: ${rangeLabel}`,
+  ].filter(Boolean).join(' · ')
 
   if (loading && projects.length === 0) return (
     <div className="flex items-center justify-center h-full py-24">
@@ -143,7 +285,7 @@ export default function SummaryPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-800">Summary Dashboard</h1>
-        <p className="text-sm text-slate-400 mt-0.5">All projects at a glance — click any chart segment for the projects behind it</p>
+        <p className="text-sm text-slate-400 mt-0.5">All projects at a glance — drill from team to customer to project</p>
       </div>
 
       {/* Filters */}
@@ -172,9 +314,9 @@ export default function SummaryPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Projects', value: String(filtered.length), icon: FolderKanban, sub: `${byTeam.map(t => `${t.count} ${t.name}`).join(' · ')}` },
+          { label: 'Projects', value: String(filtered.length), icon: FolderKanban, sub: [...totals.teamCounts.entries()].map(([t, n]) => `${n} ${t}`).join(' · ') },
           { label: 'Total Billing Value', value: fmt(totals.revenue), icon: DollarSign, sub: 'Sum of project billing values' },
-          { label: 'Total Cost', value: fmt(totals.totalCost), icon: TrendingDown, sub: `Manpower ${fmt(totals.manpower)} · Expenses ${fmt(totals.expenses)} · Vendor ${fmt(totals.vendor)}` },
+          { label: 'Total Cost', value: fmt(totals.totalCost), icon: TrendingDown, sub: `Manpower ${fmt(totals.manpower)} · Expenses ${fmt(totals.expenses)} · 3rd Party ${fmt(totals.vendor)}` },
           { label: 'Net Profit', value: fmt(totals.netProfit), icon: BarChart2, sub: `GP ${fmt(totals.grossProfit)} (after ${sgaRatePct}% SG&A) − cost`, valueClass: totals.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500' },
         ].map(({ label, value, icon: Icon, sub, valueClass }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
@@ -188,111 +330,93 @@ export default function SummaryPage() {
         ))}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {[{ title: 'Billing Value by Team', data: byTeam, open: openTeam },
-          { title: 'Billing Value by Region', data: byRegion, open: openRegion }].map(({ title, data, open }) => (
-          <div key={title} className="bg-white rounded-xl border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-              <span className="text-xs text-slate-400">Click a segment for details</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={data} cx="50%" cy="45%" innerRadius={70} outerRadius={100}
-                  paddingAngle={3} dataKey="value" nameKey="name" labelLine={false}
-                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                  onClick={(d: any) => open(data.find(g => g.name === (d?.name ?? d?.payload?.name)))}
-                  cursor="pointer"
-                >
-                  {data.map((d, i) => <Cell key={d.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                </Pie>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <ReTooltip formatter={(v: any) => fmt(Number(v))} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
-              {data.map((g, i) => (
-                <button key={g.name} onClick={() => open(g)}
-                  className="flex items-center gap-1.5 text-left hover:bg-slate-50 rounded px-1 py-0.5 transition-colors">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
-                  <span>{g.name}: <span className="font-medium text-slate-800">{fmt(g.value)}</span> ({g.count})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Team > Customer > Project drill-down charts */}
+      <HierarchyChart title="Net Profit" projects={filtered} metric={netProfitOf} onOpenProject={handleOpenProject} />
+      <HierarchyChart title="Manpower Cost" projects={filtered} metric={p => p.manpower_cost} onOpenProject={handleOpenProject} />
 
+      {/* Manpower cost by person across all filtered projects */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-700">Billing Value by Project Manager</h3>
-          <span className="text-xs text-slate-400">Top {byPm.length} · click a bar for details</span>
+        <div className="flex items-center justify-between mb-4 gap-4">
+          <h3 className="text-sm font-semibold text-slate-700">Manpower Cost by Person</h3>
+          <span className="text-xs text-slate-400 truncate" title={filterInfo}>
+            {byPerson.length > BAR_CAP ? `Top ${BAR_CAP} of ${byPerson.length} people · ` : `${byPerson.length} people · `}{filterInfo}
+          </span>
         </div>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={byPm} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={80} />
-            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <ReTooltip formatter={(v: any) => fmt(Number(v))} cursor={{ fill: '#f8fafc' }} />
-            <Bar dataKey="value" fill="#0d9488" radius={[4, 4, 0, 0]} cursor="pointer"
-              /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-              onClick={(d: any) => openPm(byPm.find(g => g.name === (d?.name ?? d?.payload?.name)))} />
-          </BarChart>
-        </ResponsiveContainer>
+        {personShown.length === 0 ? (
+          <div className="py-16 text-center text-sm text-slate-400">No timesheet data for the current filters</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={personShown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={85} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <ReTooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any, _n: any, item: any) =>
+                [`${fmt(Number(v))} · ${Number(item?.payload?.hours ?? 0).toFixed(1)} h · ${item?.payload?.projects?.size ?? 0} project(s)`, 'Cost']} />
+              <Bar dataKey="cost" fill="#0d9488" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
-      {/* Group drill-down */}
-      <Modal open={!!drill} title={drill?.title ?? ''} onClose={() => setDrill(null)} maxWidth="max-w-3xl">
-        {drill && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-slate-50 rounded-lg px-3 py-2">
-                <p className="text-xs text-slate-500">Projects</p>
-                <p className="text-sm font-bold text-slate-800">{drill.group.count}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg px-3 py-2">
-                <p className="text-xs text-slate-500">Billing Value</p>
-                <p className="text-sm font-bold text-slate-800">{fmt(drill.group.value)}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg px-3 py-2">
-                <p className="text-xs text-slate-500">Cost{(dateFrom || dateTo) ? ' (in range)' : ''}</p>
-                <p className="text-sm font-bold text-slate-800">{fmt(drill.group.cost)}</p>
-              </div>
-            </div>
+      {/* 3rd party vendor cost, filtered */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="flex items-center justify-between mb-1 gap-4">
+          <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2"><Building2 size={14} className="text-slate-400" /> 3rd Party Cost by Product</h3>
+          <span className="text-xs text-slate-400">Click a product for the projects behind it</span>
+        </div>
+        <p className="text-xs text-slate-400 mb-4 truncate" title={filterInfo}>
+          Total {fmt(vendorTotal)} across {filteredVendorRows.length} contract{filteredVendorRows.length === 1 ? '' : 's'} · {filterInfo}
+        </p>
+        {byProduct.length === 0 ? (
+          <div className="py-12 text-center text-sm text-slate-400">No 3rd party vendor costs for the current filters</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {byProduct.map(g => (
+              <button key={g.name} onClick={() => setVendorDrill({ product: g.name })}
+                className="flex items-center justify-between gap-2 bg-slate-50 hover:bg-teal-50 border border-slate-100 hover:border-teal-200 rounded-lg px-3 py-2.5 text-left transition-colors">
+                <span className="min-w-0">
+                  <span className="block text-sm text-slate-700 font-medium truncate" title={g.name}>{g.name}</span>
+                  <span className="block text-xs text-slate-400">{g.count} contract{g.count === 1 ? '' : 's'}</span>
+                </span>
+                <span className="font-mono text-sm font-semibold text-slate-800 whitespace-nowrap">{fmt(g.value)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vendor product drill-down */}
+      <Modal open={!!vendorDrill} title={vendorDrill ? `3rd Party Cost — ${vendorDrill.product}` : ''} onClose={() => setVendorDrill(null)} maxWidth="max-w-2xl">
+        {vendorDrill && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-400">{filterInfo}</p>
             <div className="max-h-96 overflow-y-auto border border-slate-100 rounded-lg">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 sticky top-0">
                   <tr className="text-xs text-slate-500 uppercase tracking-wide">
                     <th className="text-left px-3 py-2 font-medium">Project</th>
-                    <th className="text-left px-3 py-2 font-medium">PM</th>
-                    <th className="text-left px-3 py-2 font-medium">Status</th>
-                    <th className="text-right px-3 py-2 font-medium">Billing Value</th>
-                    <th className="text-right px-3 py-2 font-medium">Cost</th>
+                    <th className="text-left px-3 py-2 font-medium">Year</th>
+                    <th className="text-right px-3 py-2 font-medium">3rd Party Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[...drill.group.projects].sort((a, b) => (b.contract_value || 0) - (a.contract_value || 0)).map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/60">
-                      <td className="px-3 py-2">
-                        <button onClick={() => handleOpenProject(p)}
-                          className="text-left text-teal-700 hover:underline font-medium" title="Open in Dashboard">
-                          {p.name}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 text-slate-500 text-xs">{p.project_manager || '—'}</td>
-                      <td className="px-3 py-2 text-slate-500 text-xs capitalize">{p.status}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-800">{p.contract_value > 0 ? fmt(p.contract_value) : '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-600">{fmt(p.manpower_cost + p.expense_cost + p.vendor_cost)}</td>
+                  {vendorDrillRows.map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50/60">
+                      <td className="px-3 py-2 text-slate-700">{projectNameById.get(r.project_id) ?? r.project_id}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-500">{r.cost_date?.slice(0, 4) ?? '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-800">{fmt(Number(r.amount_sgd))}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="bg-slate-50">
+                  <tr className="font-semibold text-slate-800">
+                    <td className="px-3 py-2" colSpan={2}>Total</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(vendorDrillRows.reduce((s, r) => s + Number(r.amount_sgd), 0))}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
-            <p className="text-xs text-slate-400">Click a project name to open its full dashboard.</p>
           </div>
         )}
       </Modal>

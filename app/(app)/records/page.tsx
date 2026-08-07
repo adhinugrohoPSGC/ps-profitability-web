@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2, Plus } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2 } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import { fetchAllRows } from '@/lib/fetchAll'
@@ -108,7 +108,7 @@ const EX_FACETS: FacetDef<ExpenseEntry>[] = [
 
 const VC_FACETS: FacetDef<VendorCost>[] = [
   { key: 'product', label: 'All products', get: r => r.vendor_name },
-  { key: 'source', label: 'All sources', get: r => r.import_batch_id?.startsWith('gsheet-') ? 'Sheet' : 'Manual' },
+  { key: 'year', label: 'All years', get: r => r.cost_date?.slice(0, 4) },
 ]
 
 const emptySel = (defs: { key: string }[]) => Object.fromEntries(defs.map(d => [d.key, [] as string[]]))
@@ -127,8 +127,6 @@ export default function RecordsPage() {
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncing, setSyncing] = useState(false)
-  const [vendorForm, setVendorForm] = useState({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
-  const [vendorSaving, setVendorSaving] = useState(false)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 200)
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
@@ -248,39 +246,6 @@ export default function RecordsPage() {
     }
   }
 
-  async function addVendorCost() {
-    if (!selectedProject) return
-    const amount = parseFloat(vendorForm.amount_sgd)
-    if (!vendorForm.vendor_name.trim()) { toast('Vendor name is required', 'error'); return }
-    if (!vendorForm.cost_date) { toast('Date is required', 'error'); return }
-    if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return }
-    setVendorSaving(true)
-    try {
-      const { data, error } = await createClient().from('vendor_costs').insert({
-        project_id: selectedProject,
-        vendor_name: vendorForm.vendor_name.trim(),
-        description: vendorForm.description.trim() || null,
-        cost_date: vendorForm.cost_date,
-        amount_sgd: amount,
-      }).select().single()
-      if (error) throw error
-      setVendorCosts(prev => [...prev, data as VendorCost])
-      setVendorForm({ vendor_name: '', description: '', cost_date: '', amount_sgd: '' })
-      toast('Vendor cost added', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to add vendor cost', 'error')
-    } finally {
-      setVendorSaving(false)
-    }
-  }
-
-  async function deleteVendorCost(id: number) {
-    const { error } = await createClient().from('vendor_costs').delete().eq('id', id)
-    if (error) { toast(error.message, 'error'); return }
-    setVendorCosts(prev => prev.filter(r => r.id !== id))
-    toast('Row deleted', 'success')
-  }
-
   async function deleteExpenseRow(id: number) {
     const { error } = await createClient().from('expense_entries').delete().eq('id', id)
     if (error) { toast(error.message, 'error'); return }
@@ -377,18 +342,8 @@ export default function RecordsPage() {
       render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
     { key: 'remark', label: 'Remark', width: 280, sortValue: r => r.description?.toLowerCase() || null,
       render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
-    { key: 'date', label: 'Date', width: 110, sortValue: r => r.cost_date,
-      render: r => <span className="font-mono text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.cost_date)}</span> },
-    { key: 'source', label: 'Source', width: 80, sortValue: r => r.import_batch_id ?? '',
-      render: r => r.import_batch_id?.startsWith('gsheet-')
-        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700 font-medium">Sheet</span>
-        : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500 font-medium">Manual</span> },
-    { key: 'del', label: '', width: 44,
-      render: r => (
-        <button onClick={() => deleteVendorCost(r.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Delete row">
-          <Trash2 size={13} />
-        </button>
-      ) },
+    { key: 'year', label: 'Year', width: 80, sortValue: r => r.cost_date,
+      render: r => <span className="font-mono text-xs text-slate-600">{r.cost_date?.slice(0, 4) ?? '—'}</span> },
   ]
 
   if (!selectedProject) {
@@ -584,56 +539,8 @@ export default function RecordsPage() {
           )
         ) : (
           <div>
-            {/* Simple add form */}
-            <div className="p-5 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-slate-500 mb-1">Vendor Name</label>
-                <input
-                  value={vendorForm.vendor_name}
-                  onChange={e => setVendorForm(f => ({ ...f, vendor_name: e.target.value }))}
-                  placeholder="e.g. Acme Consulting"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
-                <input
-                  value={vendorForm.description}
-                  onChange={e => setVendorForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Optional"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={vendorForm.cost_date}
-                  onChange={e => setVendorForm(f => ({ ...f, cost_date: e.target.value }))}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Amount (SGD)</label>
-                <input
-                  type="number" min="0" step="0.01"
-                  value={vendorForm.amount_sgd}
-                  onChange={e => setVendorForm(f => ({ ...f, amount_sgd: e.target.value }))}
-                  placeholder="0.00"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-              <div>
-                <button
-                  onClick={addVendorCost}
-                  disabled={vendorSaving}
-                  className="flex items-center gap-1.5 justify-center w-full px-3 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
-                >
-                  <Plus size={14} /> {vendorSaving ? 'Adding…' : 'Add'}
-                </button>
-              </div>
-            </div>
-
+            {/* Vendor rows come exclusively from the 3rd Party Vendor Google
+                Sheet — no manual entry; use "Sync Vendors" to refresh */}
             {filteredVc.length === 0 ? (
               <div className="py-16 text-center text-sm text-slate-400">
                 {hasFilter ? 'No vendor rows match the current filters' : 'No 3rd party vendor costs recorded yet'}
@@ -649,7 +556,7 @@ export default function RecordsPage() {
                   <tr>
                     <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filteredVc.length} entries</td>
                     <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
-                    <td colSpan={4} />
+                    <td colSpan={2} />
                   </tr>
                 }
               />

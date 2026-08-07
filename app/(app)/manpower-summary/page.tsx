@@ -11,6 +11,7 @@ import DataTable, { type DataColumn } from '@/components/DataTable'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 import { useDebounce } from '@/lib/useDebounce'
+import { ChartTooltip, CHART_GRID, CHART_AXIS, CHART_CURSOR, CHART_POSITIVE, BAR_RADIUS } from '@/components/chartTheme'
 
 // Cross-project manpower cost summary: every consultant's tracked hours and
 // labour cost across all projects, with project-level facets and a cost
@@ -162,13 +163,17 @@ export default function ManpowerSummaryPage() {
         ) : (
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={byPerson.slice(0, BAR_CAP)} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={85} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toLocaleString()} h`} />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <ReTooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any, _n: any, item: any) =>
-                [`${Number(v).toFixed(1)} h · ${item?.payload?.projects ?? 0} project(s)`, 'Hours']} />
-              <Bar dataKey="hours" fill="#10b981" radius={[6, 6, 0, 0]} />
+              <CartesianGrid {...CHART_GRID} />
+              <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-40} textAnchor="end" interval={0} height={85} />
+              <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `${v.toLocaleString()} h`} />
+              <ReTooltip
+                cursor={CHART_CURSOR}
+                content={<ChartTooltip
+                  format={v => `${v.toFixed(1)} h`}
+                  sub={r => `${r.projects ?? 0} project(s)`}
+                />}
+              />
+              <Bar dataKey="hours" fill={CHART_POSITIVE} radius={BAR_RADIUS} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         )}

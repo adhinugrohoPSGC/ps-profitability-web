@@ -5,6 +5,9 @@ import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, ReferenceLine,
   Tooltip as ReTooltip, ResponsiveContainer,
 } from 'recharts'
+import {
+  ChartTooltip, CHART_GRID, CHART_AXIS, CHART_CURSOR, CHART_POSITIVE, CHART_NEGATIVE, BAR_RADIUS,
+} from '@/components/chartTheme'
 import { FolderKanban, DollarSign, TrendingDown, BarChart2, CalendarRange, X, ChevronRight, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
@@ -117,19 +120,20 @@ function HierarchyChart({ title, projects, metric, onOpenProject }: {
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={shown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false}
+            <CartesianGrid {...CHART_GRID} />
+            <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }}
               angle={-40} textAnchor="end" interval={0} height={85}
               tickFormatter={(v: string) => v.length > 24 ? v.slice(0, 23) + '…' : v} />
-            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false}
-              tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <ReTooltip formatter={(v: any) => fmt(Number(v))} cursor={{ fill: '#f8fafc' }} />
+            <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+            <ReTooltip
+              cursor={CHART_CURSOR}
+              content={<ChartTooltip format={fmt} sub={r => `${r.count ?? 0} project(s)`} />}
+            />
             {hasNegative && <ReferenceLine y={0} stroke="#cbd5e1" />}
-            <Bar dataKey="value" radius={[4, 4, 0, 0]} cursor="pointer"
+            <Bar dataKey="value" radius={BAR_RADIUS} maxBarSize={52} cursor="pointer"
               /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
               onClick={(d: any) => handleClick(d?.name ?? d?.payload?.name)}>
-              {shown.map(g => <Cell key={g.name} fill={g.value < 0 ? '#ef4444' : '#10b981'} />)}
+              {shown.map(g => <Cell key={g.name} fill={g.value < 0 ? CHART_NEGATIVE : CHART_POSITIVE} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -349,13 +353,15 @@ export default function SummaryPage() {
         ) : (
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={personShown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={85} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <ReTooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any, _n: any, item: any) =>
-                [`${fmt(Number(v))} · ${Number(item?.payload?.hours ?? 0).toFixed(1)} h · ${item?.payload?.projects?.size ?? 0} project(s)`, 'Cost']} />
-              <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <CartesianGrid {...CHART_GRID} />
+              <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-40} textAnchor="end" interval={0} height={85} />
+              <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+              <ReTooltip
+                cursor={CHART_CURSOR}
+                content={<ChartTooltip format={fmt} sub={r =>
+                  `${Number(r.hours ?? 0).toFixed(1)} h · ${(r.projects as Set<string> | undefined)?.size ?? 0} project(s)`} />}
+              />
+              <Bar dataKey="cost" fill={CHART_POSITIVE} radius={BAR_RADIUS} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         )}

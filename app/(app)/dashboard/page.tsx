@@ -1,9 +1,12 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import {
-  PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
+  PieChart, Pie, Cell, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
+import {
+  ChartTooltip, ChartLegend, CHART_GRID, CHART_AXIS, CHART_CURSOR, CHART_POSITIVE, BAR_RADIUS,
+} from '@/components/chartTheme'
 import { DollarSign, TrendingUp, TrendingDown, BarChart2, AlertCircle, CalendarRange, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/fetchAll'
@@ -49,7 +52,7 @@ function InfoField({ label, value, valueClass }: { label: string; value: string;
 }
 function marginColor(pct: number) { return pct >= 30 ? 'text-emerald-600' : pct >= 15 ? 'text-amber-500' : 'text-red-500' }
 const fmtPct = (v: number) => `${v.toFixed(1)}%`
-const COST_COLORS = { manpower: '#10b981', expenses: '#3b82f6', vendor: '#8b5cf6', sga: '#f59e0b' }
+const COST_COLORS = { manpower: '#10b981', expenses: '#fbbf24', vendor: '#6366f1', sga: '#38bdf8' }
 
 type DrillSegment =
   | 'Manpower Cost' | 'Expenses' | '3rd Party Vendor Cost' | 'SG&A'
@@ -309,33 +312,39 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold text-slate-700">Cost Breakdown</h3>
             <span className="text-xs text-slate-400">Click a segment for details</span>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={donutData} cx="50%" cy="45%" innerRadius={70} outerRadius={100}
-                paddingAngle={3} dataKey="value" labelLine={false}
-                /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                onClick={(d: any) => { const n = d?.name ?? d?.payload?.name; if (n) setDrill(n as DrillSegment) }}
-                cursor="pointer"
-              >
-                {donutData.map(d => <Cell key={d.name} fill={d.color} />)}
-              </Pie>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <ReTooltip formatter={(v: any) => fmt(Number(v))} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
-            {donutData.map(d => (
-              <button
-                key={d.name}
-                onClick={() => setDrill(d.name)}
-                className="flex items-center gap-1.5 text-left hover:bg-slate-50 rounded px-1 py-0.5 transition-colors"
-              >
-                <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: d.color }} />
-                <span>{d.name}: <span className="font-medium text-slate-800">{fmt(d.value)}</span> ({donutTotal > 0 ? ((d.value / donutTotal) * 100).toFixed(1) : '0.0'}%)</span>
-              </button>
-            ))}
+          <div className="relative">
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={donutData} cx="50%" cy="50%" innerRadius={78} outerRadius={104}
+                  paddingAngle={2} cornerRadius={8} dataKey="value" labelLine={false} stroke="none"
+                  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                  onClick={(d: any) => { const n = d?.name ?? d?.payload?.name; if (n) setDrill(n as DrillSegment) }}
+                  cursor="pointer"
+                >
+                  {donutData.map(d => <Cell key={d.name} fill={d.color} />)}
+                </Pie>
+                <ReTooltip
+                  content={<ChartTooltip format={fmt} />}
+                  cursor={false}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Total sits in the ring so the donut reads at a glance */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400">Total</p>
+              <p className="text-lg font-bold text-slate-800 tabular-nums">{fmt(donutTotal)}</p>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <ChartLegend
+              items={donutData.map(d => ({
+                name: d.name,
+                color: d.color,
+                value: `${fmt(d.value)} · ${donutTotal > 0 ? ((d.value / donutTotal) * 100).toFixed(0) : '0'}%`,
+              }))}
+              onSelect={name => setDrill(name as DrillSegment)}
+            />
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-3 gap-2">
             <div>
@@ -357,10 +366,14 @@ export default function DashboardPage() {
           <h3 className="text-sm font-semibold text-slate-700 mb-4">Manpower Cost</h3>
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={consultantData} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} angle={-40} textAnchor="end" interval={0} height={80} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
-              <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <CartesianGrid {...CHART_GRID} />
+              <XAxis {...CHART_AXIS} dataKey="name" angle={-40} textAnchor="end" interval={0} height={80} />
+              <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+              <ReTooltip
+                cursor={CHART_CURSOR}
+                content={<ChartTooltip format={fmt} sub={r => `${Number(r.hours ?? 0).toFixed(1)} h`} />}
+              />
+              <Bar dataKey="cost" fill={CHART_POSITIVE} radius={BAR_RADIUS} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         </div>

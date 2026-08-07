@@ -28,10 +28,16 @@ export async function POST(req: NextRequest) {
   try {
     const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`
     const res = await fetch(csvUrl, { redirect: 'follow', cache: 'no-store' })
-    const text = await res.text()
+    let text = await res.text()
     if (!res.ok || text.trimStart().startsWith('<')) {
       throw new Error('Could not read the expenses Google Sheet — share it as "Anyone with the link – Viewer" (File → Share) and try again')
     }
+    // The sheet has decorative blank rows above the header — drop leading
+    // lines with no content so the parser sees the header row first. (Safe:
+    // quoted embedded newlines only appear from the header row onwards.)
+    const lines = text.split(/\r?\n/)
+    while (lines.length && lines[0].replace(/[",\s]/g, '') === '') lines.shift()
+    text = lines.join('\n')
 
     const sb = createClient()
     const { data: settings } = await sb.from('user_settings').select('key, value').eq('key', 'usd_to_idr')
@@ -64,7 +70,10 @@ export async function POST(req: NextRequest) {
         unmatched.set(rawProject || '(blank)', (unmatched.get(rawProject || '(blank)') ?? 0) + 1)
         continue
       }
-      const amountSgd = row.currency === 'SGD' ? row.amount_native
+      // Prefer the sheet's own "Amount in SGD" column; fall back to the same
+      // conversion the manual Excel importer uses when it's blank.
+      const amountSgd = row.amount_sgd_reported > 0 ? row.amount_sgd_reported
+        : row.currency === 'SGD' ? row.amount_native
         : row.currency === 'IDR' ? row.amount_native / fxRate
         : row.amount_native
       entries.push({

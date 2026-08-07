@@ -52,6 +52,7 @@ export interface ExpenseRow {
   billable_to_client: boolean
   amount_native: number
   currency: string
+  amount_sgd_reported: number // sheet's own "Amount in SGD" column, 0 when absent
   _warnings: string[]
 }
 
@@ -128,7 +129,7 @@ export function parseExpensesXLS(buffer: ArrayBuffer, defaultProjectId?: string,
 
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i]
-    const amount = toNum(findCol(r, ['Amount', 'amount', 'Amount in Actual Currency', 'Cost', 'Value']))
+    const amount = toAmount(findCol(r, ['Amount', 'amount', 'Amount in Actual Currency', 'Cost', 'Value']))
     if (amount <= 0) { globalWarnings.push(`Row ${i + 2}: Amount is 0 or negative — skipped`); continue }
 
     const category = toStr(findCol(r, ['Category', 'category', 'Expense Category', 'Type', 'Expense Type']))
@@ -158,6 +159,7 @@ export function parseExpensesXLS(buffer: ArrayBuffer, defaultProjectId?: string,
       billable_to_client: toStr(findCol(r, ['Billable to Client', 'billable_to_client', 'Billable'])).toLowerCase() === 'yes',
       amount_native: amount,
       currency,
+      amount_sgd_reported: toAmount(findCol(r, ['Amount in SGD', 'Amount SGD', 'SGD Amount'])),
       _warnings: rowWarnings,
     })
   }
@@ -237,10 +239,10 @@ export interface BillingMilestoneRow {
   amount_sgd: number
 }
 
-// Amounts in the billing sheet may arrive as formatted strings ("4,051.21")
+// Amounts may arrive as formatted strings ("4,051.21", "₱25,969.02")
 function toAmount(v: unknown): number {
   if (typeof v === 'number') return isNaN(v) ? 0 : v
-  const n = parseFloat(String(v ?? '').replace(/[,$\s]/g, ''))
+  const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''))
   return isNaN(n) ? 0 : n
 }
 

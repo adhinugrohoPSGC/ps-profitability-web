@@ -231,7 +231,7 @@ export default function SummaryPage() {
       g.projects.add(r.project_id)
       map.set(r.consultant_name, g)
     }
-    return [...map.values()].sort((a, b) => b.cost - a.cost)
+    return [...map.values()].sort((a, b) => b.hours - a.hours)
   }, [personRows, filteredIds])
   const personShown = byPerson.slice(0, BAR_CAP)
 
@@ -343,7 +343,7 @@ export default function SummaryPage() {
       {/* Manpower cost by person across all filtered projects */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4 gap-4">
-          <h3 className="text-sm font-semibold text-slate-700">Manpower Cost by Person</h3>
+          <h3 className="text-sm font-semibold text-slate-700">Hours by Person</h3>
           <span className="text-xs text-slate-400 truncate" title={filterInfo}>
             {byPerson.length > BAR_CAP ? `Top ${BAR_CAP} of ${byPerson.length} people · ` : `${byPerson.length} people · `}{filterInfo}
           </span>
@@ -355,13 +355,15 @@ export default function SummaryPage() {
             <BarChart data={personShown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
               <CartesianGrid {...CHART_GRID} />
               <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-40} textAnchor="end" interval={0} height={85} />
-              <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
+              <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `${v.toLocaleString()} h`} />
               <ReTooltip
                 cursor={CHART_CURSOR}
-                content={<ChartTooltip format={fmt} sub={r =>
-                  `${Number(r.hours ?? 0).toFixed(1)} h · ${(r.projects as Set<string> | undefined)?.size ?? 0} project(s)`} />}
+                content={<ChartTooltip
+                  format={v => `${v.toFixed(1)} h`}
+                  sub={r => `${(r.projects as Set<string> | undefined)?.size ?? 0} project(s)`}
+                />}
               />
-              <Bar dataKey="cost" fill={CHART_POSITIVE} radius={BAR_RADIUS} maxBarSize={44} />
+              <Bar dataKey="hours" fill={CHART_POSITIVE} radius={BAR_RADIUS} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         )}

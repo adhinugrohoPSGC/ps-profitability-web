@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
 import MultiSelect from '@/components/MultiSelect'
+import KpiCard from '@/components/KpiCard'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 
 interface SummaryProject {
@@ -293,12 +294,12 @@ export default function SummaryPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {FACETS.map(f => (
           <MultiSelect key={f.key} label={f.label} options={facets.options[f.key]} selected={facetSel[f.key]}
             onChange={values => setFacetSel(s => ({ ...s, [f.key]: values }))} />
         ))}
-        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide ml-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide ml-1">
           <CalendarRange size={14} className="text-slate-400" /> Costs
         </span>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={dateInputCls} aria-label="From date" />
@@ -307,7 +308,7 @@ export default function SummaryPage() {
         {hasFilter && (
           <button
             onClick={() => { setDateFrom(''); setDateTo(''); setFacetSel(Object.fromEntries(FACETS.map(f => [f.key, []]))) }}
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors"
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2"
           >
             <X size={12} /> Reset
           </button>
@@ -322,17 +323,8 @@ export default function SummaryPage() {
           { label: 'Total Billing Value', value: fmt(totals.revenue), icon: DollarSign, tint: 'bg-teal-50 text-teal-600', sub: 'Sum of project billing values' },
           { label: 'Total Cost', value: fmt(totals.totalCost), icon: TrendingDown, tint: 'bg-amber-50 text-amber-600', sub: `Manpower ${fmt(totals.manpower)} · Expenses ${fmt(totals.expenses)} · 3rd Party ${fmt(totals.vendor)}` },
           { label: 'Net Profit', value: fmt(totals.netProfit), icon: BarChart2, tint: 'bg-teal-50 text-teal-600', sub: `GP ${fmt(totals.grossProfit)} (after ${sgaRatePct}% SG&A) − cost`, valueClass: totals.netProfit >= 0 ? 'text-teal-700' : 'text-red-500' },
-        ].map(({ label, value, icon: Icon, tint, sub, valueClass }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${tint}`}>
-                <Icon size={14} />
-              </span>
-              <p className="text-xs text-slate-500 font-medium">{label}</p>
-            </div>
-            <p className={`text-[26px] leading-8 font-bold tracking-tight text-slate-800 ${valueClass ?? ''}`}>{value}</p>
-            {sub && <p className="text-xs text-slate-400 mt-1 truncate" title={sub}>{sub}</p>}
-          </div>
+        ].map(({ label, value, icon, tint, sub, valueClass }) => (
+          <KpiCard key={label} label={label} value={value} sub={sub} icon={icon} tint={tint} valueClass={valueClass} />
         ))}
       </div>
 

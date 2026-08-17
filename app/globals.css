@@ -12,15 +12,21 @@
  * Card polish, applied centrally.
  *
  * Every surface in the app is written as `bg-white rounded-xl border
- * border-slate-*`. These unlayered rules sit after Tailwind's utility layer,
- * so they upgrade all of those surfaces to the softer, rounder card of the
- * current design direction without editing each page.
+ * border-slate-*`. This upgrades all of them to the softer, rounder card of
+ * the current design direction without editing each page.
+ *
+ * It lives in @layer components on purpose: Tailwind orders utilities after
+ * components, so per-element utilities and `hover:` variants still win. An
+ * unlayered rule here silently killed the hover feedback on every clickable
+ * card in the app.
  */
-.bg-white.rounded-xl.border,
-.bg-white.rounded-xl.shadow-sm {
-  border-radius: 1rem;
-  border-color: #e6eae8;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+@layer components {
+  .bg-white.rounded-xl.border,
+  .bg-white.rounded-xl.shadow-sm {
+    border-radius: 1rem;
+    border-color: #e6eae8;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+  }
 }
 
 /* Table headers read as quiet labels rather than boxes */

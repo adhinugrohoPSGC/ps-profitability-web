@@ -4,6 +4,9 @@ import { ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react'
 
 const MIN_COL_WIDTH = 56
 
+/** Rows shown before the "Show all" toggle. One value for every table. */
+export const TABLE_ROW_CAP = 100
+
 export interface DataColumn<T> {
   key: string
   label: string
@@ -21,7 +24,7 @@ type Props<T> = {
   rowCap?: number
 }
 
-export default function DataTable<T>({ columns, rows, rowKey, footer, rowCap = 100 }: Props<T>) {
+export default function DataTable<T>({ columns, rows, rowKey, footer, rowCap = TABLE_ROW_CAP }: Props<T>) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [widths, setWidths] = useState<Record<string, number>>(() =>
     Object.fromEntries(columns.map(c => [c.key, c.width])))

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
+import KpiCard from '@/components/KpiCard'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 import { useDebounce } from '@/lib/useDebounce'
@@ -114,7 +115,10 @@ export default function VendorSummaryPage() {
       render: r => (
         <button
           onClick={() => openProject(r.project_id)}
-          title="Open this project's dashboard"
+          // Names run past 80 chars and always clip here, so the tooltip must
+          // show the name; the action is announced to AT instead.
+          title={r.project_name}
+          aria-label={`${r.project_name} — open project dashboard`}
           className="font-medium text-teal-700 hover:underline truncate block text-left w-full"
         >
           {r.project_name}
@@ -168,12 +172,7 @@ export default function VendorSummaryPage() {
           { label: 'Total Contract Value', value: fmt(totalValue) },
           { label: 'Contracts', value: String(filtered.length) },
           { label: 'Products', value: String(new Set(filtered.map(r => r.vendor_name)).size) },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{label}</p>
-            <p className="text-2xl font-bold text-slate-800">{value}</p>
-          </div>
-        ))}
+        ].map(({ label, value }) => <KpiCard key={label} label={label} value={value} />)}
       </div>
 
       {/* Search + facets */}
@@ -217,12 +216,11 @@ export default function VendorSummaryPage() {
             columns={columns}
             rows={filtered}
             rowKey={r => r.id}
-            rowCap={50}
             footer={
               <tr>
                 <td colSpan={7} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filtered.length} contracts</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(total)}</td>
-                <td colSpan={3} />
+                <td colSpan={3} className="px-3 py-2" />
               </tr>
             }
           />

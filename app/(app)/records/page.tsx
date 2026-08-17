@@ -5,6 +5,7 @@ import { useProject } from '@/contexts/ProjectContext'
 import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2, Loader2 } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
+import KpiCard from '@/components/KpiCard'
 import { fetchAllRows } from '@/lib/fetchAll'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
@@ -78,16 +79,6 @@ function fmtDate(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso + 'T00:00:00')
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-      <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-2xl font-bold text-slate-800">{value}</p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-    </div>
-  )
 }
 
 const TS_FACETS: FacetDef<TimesheetEntry>[] = [
@@ -389,7 +380,7 @@ export default function RecordsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -536,7 +527,6 @@ export default function RecordsPage() {
               columns={tsColumns}
               rows={tsSummary}
               rowKey={r => r.name}
-              rowCap={50}
               footer={
                 <tr>
                   <td className="px-3 py-2 text-slate-500">Totals · {tsSummary.length} team members</td>
@@ -558,12 +548,11 @@ export default function RecordsPage() {
               columns={exColumns}
               rows={filteredEx}
               rowKey={r => r.id}
-              rowCap={50}
               footer={
                 <tr>
                   <td colSpan={14} className="px-3 py-2 text-right text-slate-500">Total (SGD) · {filteredEx.length} entries</td>
                   <td className="px-3 py-2 text-right font-mono">{fmt(totalExpSgd)}</td>
-                  <td />
+                  <td className="px-3 py-2" />
                 </tr>
               }
             />
@@ -582,12 +571,11 @@ export default function RecordsPage() {
                 columns={vendorColumns}
                 rows={filteredVc}
                 rowKey={r => r.id}
-                rowCap={50}
                 footer={
                   <tr>
                     <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filteredVc.length} entries</td>
                     <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
-                    <td colSpan={3} />
+                    <td colSpan={3} className="px-3 py-2" />
                   </tr>
                 }
               />

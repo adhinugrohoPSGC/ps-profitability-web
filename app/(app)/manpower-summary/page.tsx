@@ -8,6 +8,7 @@ import { HardHat, Search, X, CalendarRange } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
+import KpiCard from '@/components/KpiCard'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 import { useDebounce } from '@/lib/useDebounce'
@@ -112,12 +113,7 @@ export default function ManpowerSummaryPage() {
           { label: 'Total Manpower Cost', value: fmt(totals.cost) },
           { label: 'Total Hours', value: `${totals.hours.toFixed(1)} h` },
           { label: 'People', value: String(byPerson.length) },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{label}</p>
-            <p className="text-2xl font-bold text-slate-800">{value}</p>
-          </div>
-        ))}
+        ].map(({ label, value }) => <KpiCard key={label} label={label} value={value} />)}
       </div>
 
       {/* Search + facets + date range */}
@@ -193,11 +189,10 @@ export default function ManpowerSummaryPage() {
             columns={columns}
             rows={byPerson}
             rowKey={r => r.name}
-            rowCap={50}
             footer={
               <tr>
                 <td className="px-3 py-2 text-slate-500">Totals · {byPerson.length} people</td>
-                <td />
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right font-mono">{totals.hours.toFixed(1)}</td>
               </tr>
             }

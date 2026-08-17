@@ -117,6 +117,10 @@ const TABS: TabDef[] = [
   },
 ]
 
+// Numbers right-align here as they do in DataTable, so figures line up
+// column-to-column across the app.
+const alignOf = (c: Col) => c.kind === 'number' ? 'text-right' : 'text-left'
+
 function cellText(v: unknown, kind?: Col['kind']): string {
   if (v === null || v === undefined) return ''
   if (kind === 'array') return Array.isArray(v) ? v.join(', ') : String(v)
@@ -278,10 +282,10 @@ export function MasterDataClient() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Master Data</h2>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <h1 className="text-xl font-bold text-slate-800">Master Data</h1>
+        <p className="text-sm text-slate-400 mt-0.5">
           Canonical records shared with the PSGC Dashboard — changes here apply to both apps.
         </p>
       </div>
@@ -368,7 +372,7 @@ export function MasterDataClient() {
                     <th
                       key={c.key}
                       aria-sort={sorted ? (sort!.dir === 1 ? 'ascending' : 'descending') : undefined}
-                      className={`text-left px-3 py-2.5 font-medium whitespace-nowrap ${c.width ?? ''}`}
+                      className={`px-3 py-2.5 font-medium whitespace-nowrap ${alignOf(c)} ${c.width ?? ''}`}
                     >
                       <button
                         onClick={() => toggleSort(c.key)}
@@ -396,7 +400,7 @@ export function MasterDataClient() {
                     {tab.cols.map(c => {
                       const isEditing = editing?.rowId === row.id && editing.col === c.key
                       return (
-                        <td key={c.key} className={`px-3 py-2 ${c.width ?? ''}`}>
+                        <td key={c.key} className={`px-3 py-2 ${alignOf(c)} ${c.width ?? ''}`}>
                           {isEditing ? (
                             c.options ? (
                               <select

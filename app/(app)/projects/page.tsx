@@ -293,13 +293,35 @@ export default function ProjectsPage() {
   ]
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
+    <div className="space-y-6">
+      {/* Page header — actions live here, not in the filter row */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Projects</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Every engagement, its billing value and delivery dates</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={handleTrackerSync}
+            disabled={trackerSyncBusy}
+            title="Pull PM, status, kick-off and go-live dates from the PSGC Project Tracker (also runs automatically every night)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
+          >
+            {trackerSyncBusy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from Tracker
+          </button>
+          <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors">
+            <Plus size={12} /> New Project
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects…"
-            className="w-full pl-8 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
+            aria-label="Search projects"
+            className="w-full text-sm border border-slate-200 rounded-lg pl-8 pr-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500" />
         </div>
         {PROJECT_FACETS.map(f => (
           <MultiSelect key={f.key} label={f.label} options={facets.options[f.key]} selected={facetSel[f.key]}
@@ -313,18 +335,7 @@ export default function ProjectsPage() {
             <X size={12} /> Reset
           </button>
         )}
-        <span className="text-xs text-slate-400">{filtered.length} / {projects.length}</span>
-        <button
-          onClick={handleTrackerSync}
-          disabled={trackerSyncBusy}
-          title="Pull PM, status, kick-off and go-live dates from the PSGC Project Tracker (also runs automatically every night)"
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
-        >
-          {trackerSyncBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync from Tracker
-        </button>
-        <button onClick={openAdd} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">
-          <Plus size={14} /> New Project
-        </button>
+        <span className="text-xs text-slate-400 whitespace-nowrap">{filtered.length} / {projects.length}</span>
       </div>
 
       {/* Project table */}

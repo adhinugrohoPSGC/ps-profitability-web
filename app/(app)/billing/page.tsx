@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
 import { ReceiptText, ChevronDown, ChevronUp, RefreshCw, Search, ArrowUp, ArrowDown, X, Upload, Loader2, AlertTriangle } from 'lucide-react'
 import MultiSelect, { type FacetOption } from '@/components/MultiSelect'
+import KpiCard from '@/components/KpiCard'
+import { TABLE_ROW_CAP } from '@/components/DataTable'
 import Modal from '@/components/Modal'
 import { useToast } from '@/components/Toast'
 import { parseBillingMilestonesXLS, type BillingMilestoneRow } from '@/lib/parseTemplates'
@@ -112,17 +114,7 @@ function StatusBadge({ value, tone }: { value: string | null; tone: 'billing' | 
   return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap max-w-full truncate align-bottom ${cls}`} title={value}>{value}</span>
 }
 
-function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-      <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-xl font-bold text-slate-800 font-mono">{value}</p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-    </div>
-  )
-}
-
-const ROW_CAP = 100
+const ROW_CAP = TABLE_ROW_CAP
 const MIN_COL_WIDTH = 56
 const IMPORT_CHUNK = 500
 
@@ -408,7 +400,7 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -548,7 +540,8 @@ export default function BillingPage() {
                       {projectId ? (
                         <button
                           onClick={() => openProject(projectId)}
-                          title="Open this project's dashboard"
+                          title={r.project_name}
+                          aria-label={`${r.project_name} — open project dashboard`}
                           className="font-medium text-teal-700 hover:underline truncate block text-left w-full"
                         >
                           {r.project_name}

@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/fetchAll'
 import { useProject } from '@/contexts/ProjectContext'
 import Modal from '@/components/Modal'
+import KpiCard from '@/components/KpiCard'
 import { billingNameMatches, billingNamePrefixToken } from '@/lib/billingMatch'
 
 interface Project {
@@ -233,6 +234,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-slate-800">Project Dashboard</h1>
+        <p className="text-sm text-slate-400 mt-0.5">Revenue, cost and margin for the selected project · click any KPI for its calculation</p>
+      </div>
+
       {/* Project Information */}
       {project && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -250,7 +256,7 @@ export default function DashboardPage() {
       )}
 
       {/* Date Range filter — applies to Manpower, Expenses, 3rd Party Vendor (and therefore Total Cost & Net Profit) */}
-      <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">
           <CalendarRange size={14} className="text-slate-400" /> Date Range
         </span>
@@ -260,9 +266,9 @@ export default function DashboardPage() {
         {hasRange && (
           <button
             onClick={() => { setDateFrom(''); setDateTo('') }}
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors"
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-2"
           >
-            <X size={12} /> Clear
+            <X size={12} /> Reset
           </button>
         )}
         <span className="text-xs text-slate-400 ml-auto">
@@ -271,42 +277,30 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards — click any card for the calculation breakdown */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total Revenue' as DrillSegment, value: fmt(revenue), sub: revenueFromBilling ? `From billing milestones (${billing.length})` : `${project?.billing_type ?? 'Fixed Fee'} (no billing rows yet)`, icon: DollarSign, subClass: 'bg-teal-50 text-teal-700' },
-          { label: 'SG&A' as DrillSegment, value: fmt(sga), sub: `${sgaRatePct}% of revenue`, icon: TrendingDown, subClass: 'text-slate-400' },
-          { label: 'Gross Profit' as DrillSegment, value: fmt(grossProfit), sub: pctOfRevenue(grossProfit), icon: TrendingUp, valueClass: grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500', subClass: 'text-slate-400' },
-          { label: 'Net Profit' as DrillSegment, value: fmt(netProfit), sub: pctOfRevenue(netProfit), icon: BarChart2, valueClass: marginColor(revenue > 0 ? (netProfit / revenue) * 100 : 0), subClass: 'text-slate-400' },
-        ].map(({ label, value, sub, icon: Icon, subClass, valueClass }) => (
-          <button key={label} onClick={() => setDrill(label)}
-            className="bg-white rounded-xl border border-slate-200 p-5 text-left hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-              <Icon size={16} className="text-slate-400" />
-            </div>
-            <p className={`text-2xl font-bold text-slate-800 ${valueClass ?? ''}`}>{value}</p>
-            {sub && <span className={`text-xs mt-1 inline-block px-1.5 py-0.5 rounded ${subClass ?? 'text-slate-400'}`}>{sub}</span>}
-          </button>
+          { label: 'Total Revenue' as DrillSegment, value: fmt(revenue), sub: revenueFromBilling ? `From billing milestones (${billing.length})` : `${project?.billing_type ?? 'Fixed Fee'} (no billing rows yet)`, icon: DollarSign, tint: 'bg-teal-50 text-teal-600' },
+          { label: 'SG&A' as DrillSegment, value: fmt(sga), sub: `${sgaRatePct}% of revenue`, icon: TrendingDown, tint: 'bg-amber-50 text-amber-600' },
+          { label: 'Gross Profit' as DrillSegment, value: fmt(grossProfit), sub: pctOfRevenue(grossProfit), icon: TrendingUp, tint: 'bg-teal-50 text-teal-600', valueClass: grossProfit >= 0 ? 'text-teal-700' : 'text-red-500' },
+          { label: 'Net Profit' as DrillSegment, value: fmt(netProfit), sub: pctOfRevenue(netProfit), icon: BarChart2, tint: 'bg-teal-50 text-teal-600', valueClass: marginColor(revenue > 0 ? (netProfit / revenue) * 100 : 0) },
+        ].map(({ label, value, sub, icon, tint, valueClass }) => (
+          <KpiCard key={label} label={label} value={value} sub={sub} icon={icon} tint={tint}
+            valueClass={valueClass} onClick={() => setDrill(label)} title={`How ${label} is calculated`} />
         ))}
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Manpower Cost' as DrillSegment, value: manpowerCost, icon: DollarSign },
-          { label: 'Expenses' as DrillSegment, value: directExpenses, icon: TrendingDown },
-          { label: '3rd Party Vendor Cost' as DrillSegment, value: vendorCost, icon: TrendingUp },
-          { label: 'Total Cost' as DrillSegment, value: totalCost, icon: BarChart2 },
-        ].map(({ label, value, icon: Icon }) => (
-          <button key={label} onClick={() => setDrill(label)}
-            className="bg-white rounded-xl border border-slate-200 p-5 text-left hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-              <Icon size={16} className="text-slate-400" />
-            </div>
-            <p className="text-2xl font-bold text-slate-800">{fmt(value)}</p>
-            <p className="text-xs text-slate-400 mt-1">{pctOfCost(value)}</p>
-            <p className="text-xs text-slate-400">{pctOfRevenue(value)}</p>
-          </button>
+          { label: 'Manpower Cost' as DrillSegment, value: manpowerCost, icon: DollarSign, tint: 'bg-teal-50 text-teal-600' },
+          { label: 'Expenses' as DrillSegment, value: directExpenses, icon: TrendingDown, tint: 'bg-amber-50 text-amber-600' },
+          { label: '3rd Party Vendor Cost' as DrillSegment, value: vendorCost, icon: TrendingUp, tint: 'bg-indigo-50 text-indigo-600' },
+          { label: 'Total Cost' as DrillSegment, value: totalCost, icon: BarChart2, tint: 'bg-slate-100 text-slate-600' },
+        ].map(({ label, value, icon, tint }) => (
+          // One sub-line keeps both KPI rows the same height, and stays empty
+          // rather than holding open blank lines on a zero-cost project.
+          <KpiCard key={label} label={label} value={fmt(value)} icon={icon} tint={tint}
+            sub={[pctOfCost(value), pctOfRevenue(value)].filter(Boolean).join(' · ')}
+            onClick={() => setDrill(label)} title={`How ${label} is calculated`} />
         ))}
       </div>
 

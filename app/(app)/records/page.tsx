@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
-import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2 } from 'lucide-react'
+import { ClipboardList, DollarSign, Clock, TrendingUp, Trash2, RefreshCw, Search, X, Download, Building2, Loader2 } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import { fetchAllRows } from '@/lib/fetchAll'
@@ -402,7 +402,7 @@ export default function RecordsPage() {
             disabled={syncing || loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
           >
-            <Download size={12} className={syncing ? 'animate-bounce' : ''} /> {syncing ? 'Syncing…' : 'Sync ClickUp'}
+            {syncing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {syncing ? 'Syncing…' : 'Sync ClickUp'}
           </button>
           <button
             onClick={syncExpenses}
@@ -410,7 +410,7 @@ export default function RecordsPage() {
             title="Pull all expenses from the company expenses Google Sheet (also runs automatically every night)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
           >
-            <Download size={12} className={expSyncing ? 'animate-bounce' : ''} /> {expSyncing ? 'Syncing…' : 'Sync Expenses'}
+            {expSyncing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {expSyncing ? 'Syncing…' : 'Sync Expenses'}
           </button>
           <button
             onClick={syncVendors}
@@ -418,7 +418,7 @@ export default function RecordsPage() {
             title="Pull 3rd party vendor records from the vendor Google Sheet (also runs automatically every night)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
           >
-            <Download size={12} className={vendorSyncing ? 'animate-bounce' : ''} /> {vendorSyncing ? 'Syncing…' : 'Sync Vendors'}
+            {vendorSyncing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {vendorSyncing ? 'Syncing…' : 'Sync Vendors'}
           </button>
           <button
             onClick={() => setRefreshKey(k => k + 1)}

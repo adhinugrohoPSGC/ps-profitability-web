@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { Building2, Search, X, Download } from 'lucide-react'
+import { Building2, Search, X, Download, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useProject } from '@/contexts/ProjectContext'
@@ -157,7 +157,7 @@ export default function VendorSummaryPage() {
           title="Pull the latest data from the vendor Google Sheet (also runs automatically every night)"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50 transition-colors"
         >
-          <Download size={12} className={syncing ? 'animate-bounce' : ''} /> {syncing ? 'Syncing…' : 'Sync Vendors'}
+          {syncing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {syncing ? 'Syncing…' : 'Sync Vendors'}
         </button>
       </div>
 

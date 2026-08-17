@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useProject } from '@/contexts/ProjectContext'
 import { ReceiptText, ChevronDown, ChevronUp, RefreshCw, Search, ArrowUp, ArrowDown, X, Upload, Loader2, AlertTriangle } from 'lucide-react'
 import MultiSelect, { type FacetOption } from '@/components/MultiSelect'
 import Modal from '@/components/Modal'
@@ -132,6 +134,8 @@ function toDbDate(s: string): string | null {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
+  const router = useRouter()
+  const { setSelectedProject } = useProject()
   const [rows, setRows] = useState<BillingMilestone[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -150,6 +154,20 @@ export default function BillingPage() {
   const [pending, setPending] = useState<{ rows: BillingMilestoneRow[]; warnings: string[]; fileName: string } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
 
+  // Billing rows carry only a project name, so resolve it to a project id via
+  // master_project.billing_sheet_name (fuzzy — the sheet truncates long names).
+  const [projectLinks, setProjectLinks] = useState<{ id: string; sheetName: string }[]>([])
+  useEffect(() => {
+    createClient()
+      .from('projects').select('id, master_project(billing_sheet_name)')
+      .not('master_project_id', 'is', null)
+      .then(({ data }) => {
+        setProjectLinks(((data ?? []) as unknown as { id: string; master_project: { billing_sheet_name: string | null } | null }[])
+          .map(p => ({ id: p.id, sheetName: p.master_project?.billing_sheet_name ?? '' }))
+          .filter(p => p.sheetName))
+      })
+  }, [])
+
   useEffect(() => {
     setLoading(true); setError('')
     createClient()
@@ -163,6 +181,21 @@ export default function BillingPage() {
         setLoading(false)
       })
   }, [refreshKey])
+
+  const projectIdByName = useMemo(() => {
+    const map = new Map<string, string>()
+    if (projectLinks.length === 0) return map
+    for (const name of new Set(rows.map(r => r.project_name))) {
+      const hit = projectLinks.find(p => billingNameMatches(name, p.sheetName))
+      if (hit) map.set(name, hit.id)
+    }
+    return map
+  }, [rows, projectLinks])
+
+  function openProject(id: string) {
+    setSelectedProject(id)
+    router.push('/dashboard')
+  }
 
   // A row passes the search box + every facet, optionally ignoring one facet
   // (ignoring is what makes the dropdowns cascade instead of locking themselves).
@@ -506,11 +539,23 @@ export default function BillingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {display.map((r, i) => (
+                {display.map((r, i) => {
+                  const projectId = projectIdByName.get(r.project_name)
+                  return (
                   <tr key={r.id} className="hover:bg-slate-50/50">
                     <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
                     <td className="px-3 py-2 overflow-hidden">
-                      <p className="font-medium text-slate-800 truncate" title={r.project_name}>{r.project_name}</p>
+                      {projectId ? (
+                        <button
+                          onClick={() => openProject(projectId)}
+                          title="Open this project's dashboard"
+                          className="font-medium text-teal-700 hover:underline truncate block text-left w-full"
+                        >
+                          {r.project_name}
+                        </button>
+                      ) : (
+                        <p className="font-medium text-slate-800 truncate" title={r.project_name}>{r.project_name}</p>
+                      )}
                       <p className="text-xs text-slate-400 truncate">{[r.project_manager, r.country].filter(Boolean).join(' · ') || '—'}</p>
                     </td>
                     <td className="px-3 py-2 overflow-hidden text-slate-500 truncate" title={r.project_owner ?? ''}>{r.project_owner || '—'}</td>
@@ -528,7 +573,8 @@ export default function BillingPage() {
                       {r.amount_sgd != null ? fmtSgd(r.amount_sgd) : '—'}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
               <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-semibold text-slate-700">
                 <tr>

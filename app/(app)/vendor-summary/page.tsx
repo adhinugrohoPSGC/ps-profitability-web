@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { Building2, Search, X, Download } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useProject } from '@/contexts/ProjectContext'
 import { useToast } from '@/components/Toast'
 import DataTable, { type DataColumn } from '@/components/DataTable'
 import MultiSelect from '@/components/MultiSelect'
@@ -21,6 +23,7 @@ interface VendorRow {
   value_sgd: number | null
   psgc_portion: number | null
   third_party_portion: number | null
+  service: string | null
   // joined client-side
   project_name: string
   team: string
@@ -32,6 +35,7 @@ const fmtPortion = (v: number | null) => v == null ? '—' : `${Math.round(v * 1
 
 const FACETS: FacetDef<VendorRow>[] = [
   { key: 'product', label: 'All products', get: r => r.vendor_name },
+  { key: 'service', label: 'All services', get: r => r.service },
   { key: 'team', label: 'All teams', get: r => r.team },
   { key: 'region', label: 'All regions', get: r => r.region },
   { key: 'year', label: 'All years', get: r => r.cost_date?.slice(0, 4) },
@@ -39,6 +43,8 @@ const FACETS: FacetDef<VendorRow>[] = [
 
 export default function VendorSummaryPage() {
   const { toast } = useToast()
+  const router = useRouter()
+  const { setSelectedProject } = useProject()
   const [rows, setRows] = useState<VendorRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -52,7 +58,7 @@ export default function VendorSummaryPage() {
     setLoading(true)
     const sb = createClient()
     Promise.all([
-      sb.from('vendor_costs').select('id, project_id, vendor_name, description, cost_date, amount_sgd, value_sgd, psgc_portion, third_party_portion'),
+      sb.from('vendor_costs').select('id, project_id, vendor_name, description, cost_date, amount_sgd, value_sgd, psgc_portion, third_party_portion, service'),
       sb.from('projects').select('id, name, master_project(team, region)'),
     ]).then(([vc, proj]) => {
       const projMap = new Map(((proj.data ?? []) as unknown as { id: string; name: string; master_project: { team: string | null; region: string | null } | null }[])
@@ -74,8 +80,14 @@ export default function VendorSummaryPage() {
 
   const facets = useMemo(() =>
     buildFacets(rows, FACETS, facetSel, debouncedSearch,
-      r => [r.project_name, r.vendor_name, r.description]),
+      r => [r.project_name, r.vendor_name, r.description, r.service]),
     [rows, facetSel, debouncedSearch])
+
+  // Jump straight into the project's own dashboard
+  function openProject(id: string) {
+    setSelectedProject(id)
+    router.push('/dashboard')
+  }
   const filtered = facets.filtered
   const hasFilter = !!search || Object.values(facetSel).some(v => v.length)
 
@@ -99,7 +111,15 @@ export default function VendorSummaryPage() {
 
   const columns: DataColumn<VendorRow>[] = [
     { key: 'project', label: 'Project', width: 320, sortValue: r => r.project_name.toLowerCase(),
-      render: r => <span className="font-medium text-slate-800 truncate block" title={r.project_name}>{r.project_name}</span> },
+      render: r => (
+        <button
+          onClick={() => openProject(r.project_id)}
+          title="Open this project's dashboard"
+          className="font-medium text-teal-700 hover:underline truncate block text-left w-full"
+        >
+          {r.project_name}
+        </button>
+      ) },
     { key: 'team', label: 'Team', width: 90, sortValue: r => r.team,
       render: r => <span className="text-slate-500 text-xs">{r.team}</span> },
     { key: 'region', label: 'Region', width: 100, sortValue: r => r.region,
@@ -114,6 +134,10 @@ export default function VendorSummaryPage() {
       render: r => <span className="font-mono text-xs text-slate-600">{fmtPortion(r.third_party_portion)}</span> },
     { key: 'amount', label: '3rd Party Value (SGD)', width: 150, align: 'right', sortValue: r => r.amount_sgd,
       render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
+    { key: 'service', label: 'Service', width: 180, sortValue: r => r.service?.toLowerCase() || null,
+      render: r => r.service
+        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700 font-medium truncate max-w-full" title={r.service}>{r.service}</span>
+        : <span className="text-slate-300 text-xs">not set</span> },
     { key: 'remark', label: 'Remark', width: 260, sortValue: r => r.description?.toLowerCase() || null,
       render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
     { key: 'year', label: 'Year', width: 80, sortValue: r => r.cost_date,
@@ -198,7 +222,7 @@ export default function VendorSummaryPage() {
               <tr>
                 <td colSpan={7} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filtered.length} contracts</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(total)}</td>
-                <td colSpan={2} />
+                <td colSpan={3} />
               </tr>
             }
           />

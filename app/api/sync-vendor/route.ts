@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
     if (missing.length) throw new Error(`Vendor sheet columns not found: ${missing.join(', ')}`)
 
     const sb = createClient()
+
+    // `service` is maintained in the app (Records → 3rd Party Vendor), not in
+    // the sheet, so remember it before the replace and re-apply it below.
+    // Keyed on project + product, which is the contract's stable identity.
+    const { data: existing, error: existErr } = await sb
+      .from('vendor_costs').select('project_id, vendor_name, service').not('service', 'is', null)
+    if (existErr) throw new Error(`Could not read existing services: ${existErr.message}`)
+    const serviceByKey = new Map(
+      ((existing ?? []) as { project_id: string; vendor_name: string; service: string }[])
+        .map(r => [`${r.project_id}|${r.vendor_name}`, r.service])
+    )
+
     const { data: projData, error: projErr } = await sb.from('projects').select('id, name')
     if (projErr) throw new Error(`Projects read failed: ${projErr.message}`)
     const projects = (projData ?? []) as { id: string; name: string }[]
@@ -90,16 +102,18 @@ export async function POST(req: NextRequest) {
         continue
       }
       const year = parseInt(String(r[cols.year] ?? ''), 10)
+      const product = String(r[cols.product] ?? '').trim() || '(unnamed product)'
       entries.push({
         user_id: ANON_USER_ID,
         project_id: projectId,
-        vendor_name: String(r[cols.product] ?? '').trim() || '(unnamed product)',
+        vendor_name: product,
         description: String(r[cols.remarks] ?? '').trim() || null,
         cost_date: year >= 2000 && year <= 2100 ? `${year}-01-01` : today,
         value_sgd: toAmount(r[cols.value_sgd]),
         psgc_portion: toAmount(r[cols.psgc]),
         third_party_portion: toAmount(r[cols.tp]),
         amount_sgd: toAmount(r[cols.tp_value]),
+        service: serviceByKey.get(`${projectId}|${product}`) ?? null,
         import_batch_id: batch,
       })
     }
@@ -117,6 +131,8 @@ export async function POST(req: NextRequest) {
       imported: entries.length,
       sheetRows,
       skippedNoProject: sheetRows - entries.length,
+      servicesPreserved: entries.filter(e => e.service).length,
+      servicesOrphaned: serviceByKey.size - entries.filter(e => e.service).length,
       unmatchedProjects: [...unmatched.entries()].map(([name, count]) => ({ name, count })),
     })
   } catch (e) {

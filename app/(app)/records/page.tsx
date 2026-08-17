@@ -9,6 +9,7 @@ import { fetchAllRows } from '@/lib/fetchAll'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
 import { useDebounce } from '@/lib/useDebounce'
+import { SERVICE_OPTIONS } from '@/lib/serviceOptions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ interface VendorCost {
   value_sgd: number | null
   psgc_portion: number | null
   third_party_portion: number | null
+  service: string | null
   import_batch_id: string | null
 }
 
@@ -108,6 +110,7 @@ const EX_FACETS: FacetDef<ExpenseEntry>[] = [
 
 const VC_FACETS: FacetDef<VendorCost>[] = [
   { key: 'product', label: 'All products', get: r => r.vendor_name },
+  { key: 'service', label: 'All services', get: r => r.service },
   { key: 'year', label: 'All years', get: r => r.cost_date?.slice(0, 4) },
 ]
 
@@ -132,6 +135,7 @@ export default function RecordsPage() {
   const [tsSel, setTsSel] = useState<Record<string, string[]>>(() => emptySel(TS_FACETS))
   const [exSel, setExSel] = useState<Record<string, string[]>>(() => emptySel(EX_FACETS))
   const [vcSel, setVcSel] = useState<Record<string, string[]>>(() => emptySel(VC_FACETS))
+  const [vendorSavingId, setVendorSavingId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!selectedProject) { setTimesheet([]); setExpenses([]); setVendorCosts([]); return }
@@ -160,7 +164,7 @@ export default function RecordsPage() {
 
   const vcFacets = useMemo(() =>
     buildFacets(vendorCosts, VC_FACETS, vcSel, debouncedSearch,
-      r => [r.vendor_name, r.description]),
+      r => [r.vendor_name, r.description, r.service]),
     [vendorCosts, vcSel, debouncedSearch])
 
   const filteredTs = tsFacets.filtered
@@ -244,6 +248,18 @@ export default function RecordsPage() {
     } finally {
       setExpSyncing(false)
     }
+  }
+
+  // Service is the one vendor field owned here rather than by the sheet sync;
+  // the nightly sync carries it forward (see app/api/sync-vendor/route.ts).
+  async function updateVendorService(id: number, value: string) {
+    const service = value || null
+    setVendorSavingId(id)
+    const { error } = await createClient().from('vendor_costs').update({ service }).eq('id', id)
+    setVendorSavingId(null)
+    if (error) { toast(error.message, 'error'); return }
+    setVendorCosts(prev => prev.map(r => r.id === id ? { ...r, service } : r))
+    toast(service ? `Service set to ${service}` : 'Service cleared', 'success')
   }
 
   async function deleteExpenseRow(id: number) {
@@ -340,7 +356,22 @@ export default function RecordsPage() {
       render: r => <span className="font-mono text-xs text-slate-600">{fmtPortion(r.third_party_portion)}</span> },
     { key: 'amount', label: '3rd Party Value (SGD)', width: 150, align: 'right', sortValue: r => r.amount_sgd,
       render: r => <span className="font-mono text-slate-800 font-medium">{fmt(r.amount_sgd)}</span> },
-    { key: 'remark', label: 'Remark', width: 280, sortValue: r => r.description?.toLowerCase() || null,
+    { key: 'service', label: 'Service', width: 190, sortValue: r => r.service?.toLowerCase() || null,
+      render: r => (
+        <select
+          value={r.service ?? ''}
+          onChange={e => updateVendorService(r.id, e.target.value)}
+          disabled={vendorSavingId === r.id}
+          title="Set the service classification for this contract"
+          className={`w-full text-xs border rounded-lg px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 ${
+            r.service ? 'border-slate-200 text-slate-700' : 'border-slate-200 text-slate-400'
+          }`}
+        >
+          <option value="">— not set —</option>
+          {SERVICE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) },
+    { key: 'remark', label: 'Remark', width: 260, sortValue: r => r.description?.toLowerCase() || null,
       render: r => <span className="text-slate-500 truncate block" title={r.description ?? ''}>{r.description || '—'}</span> },
     { key: 'year', label: 'Year', width: 80, sortValue: r => r.cost_date,
       render: r => <span className="font-mono text-xs text-slate-600">{r.cost_date?.slice(0, 4) ?? '—'}</span> },
@@ -556,7 +587,7 @@ export default function RecordsPage() {
                   <tr>
                     <td colSpan={4} className="px-3 py-2 text-right text-slate-500">Total 3rd Party Value (SGD) · {filteredVc.length} entries</td>
                     <td className="px-3 py-2 text-right font-mono">{fmt(totalVendorSgd)}</td>
-                    <td colSpan={2} />
+                    <td colSpan={3} />
                   </tr>
                 }
               />

@@ -280,13 +280,11 @@ export default function ProjectsPage() {
       render: p => <span className="font-mono text-xs text-slate-500">{p.start_date ?? '—'}</span> },
     { key: 'end', label: 'End', width: 110, sortValue: p => p.end_date,
       render: p => <span className="font-mono text-xs text-slate-500">{p.end_date ?? '—'}</span> },
-    { key: 'actions', label: '', width: 200,
+    // "Open in Dashboard" lived here too — dropped, since clicking the project
+    // name now does it and the icon was indistinguishable from Edit Budget.
+    { key: 'actions', label: '', width: 160,
       render: p => (
         <div className="flex items-center gap-1">
-          <button onClick={() => handleOpenDashboard(p)} title="Open in Dashboard"
-            className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
-            <BarChart2 size={15} />
-          </button>
           <button onClick={() => openEdit(p)} title="Edit"
             className="p-1.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50">
             <Edit2 size={14} />

@@ -25,7 +25,7 @@ interface Project {
   notes: string | null
   external_id: string | null
   created_at: string
-  master_project?: { project_code: string | null; region: string | null; product: string | null } | null
+  master_project?: { project_code: string | null; region: string | null; product: string | null; team: string | null } | null
 }
 
 interface BudgetLine {
@@ -60,6 +60,8 @@ const fmt = (v: number, currency = 'SGD') =>
   new Intl.NumberFormat('en-SG', { style: 'currency', currency, maximumFractionDigits: 0 }).format(v)
 
 const PROJECT_FACETS: FacetDef<Project>[] = [
+  { key: 'team', label: 'All teams', get: r => r.master_project?.team },
+  { key: 'region', label: 'All regions', get: r => r.master_project?.region },
   { key: 'pm', label: 'All PMs', get: r => r.project_manager },
   { key: 'status', label: 'All statuses', get: r => r.status },
   { key: 'billing_type', label: 'All billing types', get: r => r.billing_type },
@@ -87,7 +89,7 @@ export default function ProjectsPage() {
     setLoading(true)
     try {
       const { data, error } = await createClient()
-        .from('projects').select('*, master_project(project_code, region, product)').order('created_at', { ascending: false })
+        .from('projects').select('*, master_project(project_code, region, product, team)').order('created_at', { ascending: false })
       if (error) throw error
       setProjects((data as Project[]) ?? [])
     } catch { toast('Failed to load projects', 'error') }
@@ -247,6 +249,10 @@ export default function ProjectsPage() {
           )}
         </>
       ) },
+    { key: 'team', label: 'Team', width: 100, sortValue: p => p.master_project?.team ?? null,
+      render: p => p.master_project?.team
+        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700 font-medium">{p.master_project.team}</span>
+        : <span className="text-slate-300 text-xs">—</span> },
     { key: 'pm', label: 'PM', width: 150, sortValue: p => p.project_manager?.toLowerCase() || null,
       render: p => <span className="text-slate-600 truncate block" title={p.project_manager ?? ''}>{p.project_manager || '—'}</span> },
     { key: 'status', label: 'Status', width: 110, sortValue: p => p.status,

@@ -40,6 +40,12 @@ interface VendorRow { id: number; project_id: string; vendor_name: string; amoun
 const DEFAULT_SGA_RATE_PCT = 30
 const fmt = (v: number) => new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 0 }).format(v)
 const BAR_CAP = 15
+// The three charts share one row, so each gets a third of the width — fewer
+// bars keeps the rotated name labels readable.
+const PERSON_BAR_CAP = 8
+const CHART_HEIGHT = 260
+// Rotated tick labels overlap fast in a narrow column
+const shortTick = (v: string) => v.length > 16 ? v.slice(0, 15) + '…' : v
 
 const FACETS: FacetDef<SummaryProject>[] = [
   { key: 'team', label: 'All teams', get: p => p.master_project?.team },
@@ -119,12 +125,12 @@ function HierarchyChart({ title, projects, metric, onOpenProject }: {
       {shown.length === 0 ? (
         <div className="py-16 text-center text-sm text-slate-400">No data for the current filters</div>
       ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={shown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
+        <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+          <BarChart data={shown} margin={{ top: 4, right: 8, bottom: 60, left: 8 }}>
             <CartesianGrid {...CHART_GRID} />
             <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }}
-              angle={-40} textAnchor="end" interval={0} height={85}
-              tickFormatter={(v: string) => v.length > 24 ? v.slice(0, 23) + '…' : v} />
+              angle={-40} textAnchor="end" interval={0} height={75}
+              tickFormatter={shortTick} />
             <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `S$${(v / 1000).toFixed(0)}k`} />
             <ReTooltip
               cursor={CHART_CURSOR}
@@ -234,7 +240,7 @@ export default function SummaryPage() {
     }
     return [...map.values()].sort((a, b) => b.hours - a.hours)
   }, [personRows, filteredIds])
-  const personShown = byPerson.slice(0, BAR_CAP)
+  const personShown = byPerson.slice(0, PERSON_BAR_CAP)
 
   // 3rd party vendor cost per product across the filtered projects, honouring
   // the cost date range (vendor rows are dated by their Year of Signoff)
@@ -328,25 +334,28 @@ export default function SummaryPage() {
         ))}
       </div>
 
-      {/* Team > Customer > Project drill-down charts */}
+      {/* Three charts on one row — the two drill-downs hold few bars each, so
+          stacking them full-width wasted most of the viewport */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <HierarchyChart title="Net Profit" projects={filtered} metric={netProfitOf} onOpenProject={handleOpenProject} />
       <HierarchyChart title="Manpower Cost" projects={filtered} metric={p => p.manpower_cost} onOpenProject={handleOpenProject} />
 
       {/* Manpower cost by person across all filtered projects */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4 gap-4">
+        <div className="mb-1">
           <h3 className="text-sm font-semibold text-slate-700">Hours by Person</h3>
-          <span className="text-xs text-slate-400 truncate" title={filterInfo}>
-            {byPerson.length > BAR_CAP ? `Top ${BAR_CAP} of ${byPerson.length} people · ` : `${byPerson.length} people · `}{filterInfo}
-          </span>
         </div>
+        <p className="text-xs text-slate-400 mb-4 truncate" title={filterInfo}>
+          {byPerson.length > PERSON_BAR_CAP ? `Top ${PERSON_BAR_CAP} of ${byPerson.length} people` : `${byPerson.length} people`} · {filterInfo}
+        </p>
         {personShown.length === 0 ? (
           <div className="py-16 text-center text-sm text-slate-400">No timesheet data for the current filters</div>
         ) : (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={personShown} margin={{ top: 4, right: 8, bottom: 70, left: 8 }}>
+          <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <BarChart data={personShown} margin={{ top: 4, right: 8, bottom: 60, left: 8 }}>
               <CartesianGrid {...CHART_GRID} />
-              <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} angle={-40} textAnchor="end" interval={0} height={85} />
+              <XAxis {...CHART_AXIS} dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }}
+                angle={-40} textAnchor="end" interval={0} height={75} tickFormatter={shortTick} />
               <YAxis {...CHART_AXIS} tickFormatter={(v: number) => `${v.toLocaleString()} h`} />
               <ReTooltip
                 cursor={CHART_CURSOR}
@@ -359,6 +368,7 @@ export default function SummaryPage() {
             </BarChart>
           </ResponsiveContainer>
         )}
+      </div>
       </div>
 
       {/* 3rd party vendor cost, filtered */}

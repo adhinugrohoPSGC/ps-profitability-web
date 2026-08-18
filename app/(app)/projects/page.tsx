@@ -243,7 +243,16 @@ export default function ProjectsPage() {
     { key: 'name', label: 'Project', width: 340, sortValue: p => p.name.toLowerCase(),
       render: p => (
         <>
-          <p className="font-medium text-slate-800 truncate" title={p.name}>{p.name}</p>
+          <button
+            onClick={() => handleOpenDashboard(p)}
+            // Names run long and always clip here, so the tooltip carries the
+            // name; the action is announced to assistive tech instead.
+            title={p.name}
+            aria-label={`${p.name} — open project dashboard`}
+            className="font-medium text-teal-700 hover:underline truncate block text-left w-full"
+          >
+            {p.name}
+          </button>
           {(p.start_date || p.end_date) && (
             <p className="text-xs text-slate-400 truncate">{p.start_date ?? '?'} → {p.end_date ?? 'ongoing'}</p>
           )}

@@ -1,0 +1,27 @@
+{
+  "detector": {
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "app/(app)/dashboard/page.tsx",
+          "app/(app)/projects/page.tsx",
+          "app/(app)/summary/page.tsx"
+        ],
+        "reason": "Claude verified dashboard:214, projects:343, summary:286 — all three are the CSS loading-spinner idiom 'animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600', where the border-radius forms the rotating arc and border-b-2 is the arc stroke, not a card accent border. Scoped with value '*' because extractFindingIgnoreValue in hook-lib.mjs returns a value only for overused-font, bounce-easing and the design-system-* rules, so a value-specific entry can never match this rule."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "app/(app)/projects/page.tsx",
+          "app/(app)/admin/master/MasterDataClient.tsx",
+          "app/(app)/admin/users/AdminUsersClient.tsx",
+          "app/(app)/reports/page.tsx"
+        ],
+        "reason": "Claude verified each site: projects row icon buttons and the AdminUsers delete button swap text and background together on hover (text-slate-400 hover:text-teal-600 hover:bg-teal-50 / bg-slate-100 hover:bg-red-600 hover:text-white), so the gray never paints on the tint; MasterDataClient:434 and reports:730 put slate-700 on teal-50, ~10:1 contrast on a near-white tint; MasterDataClient:452 reads two opposite branches of one ternary (bg-slate-100 text-slate-500 / bg-emerald-500 text-white) as one pair. Detector resolves neither hover-variant nor ternary-branch scoping. Value '*' because gray-on-color is not in extractFindingIgnoreValue's directValueRules, so value-specific entries are inert for it. NOT extended to rate-card/page.tsx, which is unverified."
+      }
+    ]
+  }
+}

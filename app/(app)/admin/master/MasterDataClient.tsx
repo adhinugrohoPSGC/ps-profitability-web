@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
 import MultiSelect from '@/components/MultiSelect'
 import { buildFacets, type FacetDef } from '@/lib/facets'
+import { SERVICE_OPTIONS } from '@/lib/serviceOptions'
 
 type Row = Record<string, unknown> & { id: string | number }
 
@@ -14,6 +15,9 @@ type Col = {
   editable?: boolean
   kind?: 'text' | 'number' | 'bool' | 'array' | 'timestamp'
   options?: string[] // renders a dropdown instead of a text input
+  // What an emptied cell writes. Defaults to null; NOT NULL columns (all of
+  // master_vendor) must use '' or the update is rejected.
+  emptyValue?: '' | null
   width?: string
 }
 
@@ -92,6 +96,16 @@ const TABS: TabDef[] = [
       { key: 'subteam', label: 'Subteam', editable: true },
       { key: 'revenue_stream', label: 'Revenue Stream', editable: true },
       { key: 'sort_order', label: 'Sort', editable: true, kind: 'number' },
+    ],
+  },
+  {
+    // Shared with the PSGC Dashboard — same master_vendor table, so edits here are canonical for both apps.
+    key: 'vendors', label: '3rd Party Vendors', table: 'master_vendor', orderBy: 'product_name', hasActive: true, canAdd: true,
+    addDefaults: { vendor_name: '', product_name: 'New product', services: '', active: true },
+    cols: [
+      { key: 'vendor_name', label: 'Vendor', editable: true, emptyValue: '', width: 'min-w-[180px]' },
+      { key: 'product_name', label: '3rd Party Product', editable: true, emptyValue: '', width: 'min-w-[200px]' },
+      { key: 'services', label: 'Service', editable: true, emptyValue: '', options: [...SERVICE_OPTIONS], width: 'min-w-[200px]' },
     ],
   },
   {
@@ -232,7 +246,7 @@ export function MasterDataClient() {
     if (col.kind === 'number') {
       const n = parseFloat(raw)
       value = raw.trim() === '' ? null : (isFinite(n) ? n : null)
-    } else if (raw.trim() === '') value = null
+    } else if (raw.trim() === '') value = col.emptyValue ?? null
     setEditing(null)
     if (cellText(row[col.key], col.kind) === cellText(value, col.kind)) return
     const { error } = await createClient()

@@ -81,3 +81,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
+
+// Vercel cron jobs invoke the path with GET; the handler is identical.
+export const GET = POST

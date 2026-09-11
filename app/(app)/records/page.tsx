@@ -191,14 +191,14 @@ export default function RecordsPage() {
   const singleBatch = activeSel.batch?.length === 1 ? activeSel.batch[0] : null
 
   async function syncClickUp() {
-    if (!selectedProject) return
     setSyncing(true)
     try {
-      // Full-history window so project totals match ClickUp's all-time report
-      const res = await fetch(`/api/sync-clickup-manual?projectId=${selectedProject}&windowDays=1100`, { method: 'POST' })
+      // Every linked project, full history, so totals match ClickUp's all-time report
+      const res = await fetch('/api/sync-clickup-manual', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Sync failed')
-      toast(`Synced ${json.rows ?? 0} entries from ClickUp (last ${json.windowDays} days)`, 'success')
+      const partial = json.partial ? ` · ${json.remaining} left for the next run` : ''
+      toast(`Synced ${json.rows ?? 0} entries across ${json.synced ?? 0} projects${partial}`, 'success')
       setRefreshKey(k => k + 1)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Sync failed', 'error')

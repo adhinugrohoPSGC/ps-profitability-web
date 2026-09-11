@@ -163,3 +163,6 @@ export async function POST(req: NextRequest) {
     projects: syncedProjects,
   })
 }
+
+// Vercel cron jobs invoke the path with GET; the handler is identical.
+export const GET = POST

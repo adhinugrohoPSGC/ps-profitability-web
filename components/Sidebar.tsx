@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Upload, FolderKanban, Users,
+  LayoutDashboard, FolderKanban, Users,
   FileBarChart2, Settings, TrendingUp, ClipboardList, ShieldCheck, ReceiptText, Database,
   PieChart, Building2, HardHat,
 } from 'lucide-react'
@@ -25,7 +25,6 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
       { key: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'projects', href: '/projects', label: 'Projects', icon: FolderKanban },
       { key: 'records', href: '/records', label: 'Records', icon: ClipboardList },
-      { key: 'upload', href: '/upload', label: 'Upload Templates', icon: Upload },
       { key: 'reports', href: '/reports', label: 'Reports', icon: FileBarChart2 },
     ],
   },

@@ -7,7 +7,6 @@ export const MENUS = [
   { key: 'dashboard',        label: 'Project: Dashboard' },
   { key: 'projects',         label: 'Project: Projects' },
   { key: 'records',          label: 'Project: Records' },
-  { key: 'upload',           label: 'Project: Upload Templates' },
   { key: 'reports',          label: 'Project: Reports' },
   { key: 'settings',         label: 'Setting: Preferences' },
   { key: 'rate-card',        label: 'Setting: Rate Card' },

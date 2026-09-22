@@ -14,7 +14,6 @@ const TITLES: Record<string, string> = {
   '/dashboard':         'Project Dashboard',
   '/projects':          'Projects',
   '/records':           'Records',
-  '/upload':            'Upload Templates',
   '/reports':           'Reports',
   '/settings':          'Preferences',
   '/rate-card':         'Rate Card Manager',
@@ -66,7 +65,7 @@ export default function TopBar() {
     }
   }, [open])
 
-  const showProjectSelector = ['/dashboard', '/upload', '/reports', '/records'].includes(pathname)
+  const showProjectSelector = ['/dashboard', '/reports', '/records'].includes(pathname)
   const selectedName = projects.find(p => p.id === selectedProject)?.name
   const q = query.trim().toLowerCase()
   const shown = q ? projects.filter(p => p.name.toLowerCase().includes(q)) : projects

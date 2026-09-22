@@ -219,7 +219,7 @@ export default function DashboardPage() {
     <div className="flex flex-col items-center justify-center h-full text-center py-24">
       <AlertCircle className="w-12 h-12 text-slate-300 mb-4" />
       <h2 className="text-xl font-semibold text-slate-600 mb-2">No data yet</h2>
-      <p className="text-slate-400 text-sm">Go to Upload Templates to import timesheet and expense data.</p>
+      <p className="text-slate-400 text-sm">Timesheet and expense data sync nightly. Use Records to sync this project now.</p>
     </div>
   )
 
